@@ -2,7 +2,7 @@ import { SectionContainer, SectionHeader } from '../../modules/app/components'
 import { useSections } from '../../modules/app/hooks'
 import { Experience as ExperienceIcon } from '../../modules/icon/components'
 import { ExpCard, TimeLine } from './components'
-import { useExperience } from './hooks'
+import useExperience from './hooks/useExperience'
 
 export default function Experience() {
   const { CARDS } = useExperience()

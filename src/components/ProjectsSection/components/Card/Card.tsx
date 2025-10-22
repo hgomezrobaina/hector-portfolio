@@ -1,11 +1,14 @@
 import clsx from 'clsx'
-import { DescriptionSection, ImageSection, LinksSection, MadeWithSection } from './components'
 import { Variants, motion } from 'framer-motion'
+import MadeWithSection from './components/MadeWithSection/MadeWithSection'
+import DescriptionSection from './components/DescriptionSection/DescriptionSection'
+import LinksSection from './components/LinksSection/LinksSection'
+import ImageSection from './components/ImageSection/ImageSection'
 
 interface Props {
   image: string
   alt: string
-  madeWith: Array<string>
+  madeWith: string[]
   description: string
   externalLink: string
   githubLink: string

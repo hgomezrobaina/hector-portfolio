@@ -1,5 +1,5 @@
 import { useTranslation } from '../../../modules/language/hooks'
-import { ExperienceCard } from '../interfaces'
+import { ExperienceCard } from '../interfaces/experience-card'
 
 export default function useExperience() {
   const { UNIVERSITY, JUNIOR, FREELANCER } = useTranslation({
@@ -18,7 +18,7 @@ export default function useExperience() {
     JUNIOR_FIRST: { en: 'April 2022', es: 'Abril 2022' },
     JUNIOR_SECOND: { en: 'Dicember 2022', es: 'Diciembre 2022' },
 
-    FREELANCER_FIRST: { en: 'Frebruary 2023', es: 'Febrero 2025' },
+    FREELANCER_FIRST: { en: 'Frebruary 2023', es: 'Febrero 2023' },
     FREELANCER_SECOND: { en: 'January 2025', es: 'Enero 2025' },
   })
 
@@ -75,7 +75,7 @@ export default function useExperience() {
     },
   })
 
-  const CARDS: Array<ExperienceCard> = [
+  const CARDS: ExperienceCard[] = [
     {
       position: UNIVERSITY,
       limits: { init: DATES.UNIVERISITY_FIRST, finish: DATES.UNIVERISTY_SECOND },

@@ -44,12 +44,12 @@ export default function useProjectSection() {
       description: CHACA_WEB_DESCRIPTION,
     },
     {
-      title: 'Dealernode',
+      title: 'Autodirect Dealernode',
       image: APP_IMAGES.PROJECTS.DEALERNODE,
       description: DEALERNODE,
       externalLink: 'https://dealernode.net',
       githubLink: 'https://github.com/Chacaponquin/dealer-front',
-      madeWith: ['React', 'Nestjs', 'Postgresql', 'Typeorm'],
+      madeWith: ['React', 'Nestjs', 'Postgresql', 'Typeorm', 'Stripe'],
     },
     {
       title: 'Visa4Cuba',

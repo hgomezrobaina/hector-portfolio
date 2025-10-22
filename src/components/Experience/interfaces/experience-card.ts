@@ -1,7 +1,7 @@
 export interface ExperienceCard {
   position: string
   limits: Limit
-  notes: Array<string>
+  notes: string[]
 }
 
 export interface Limit {

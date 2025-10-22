@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Limit } from '../../interfaces'
+import { Limit } from '../../interfaces/experience-card'
 import { Note, Point } from './components'
 import { useScreen } from '../../../../modules/shared/hooks'
 import { Variants, motion } from 'framer-motion'
