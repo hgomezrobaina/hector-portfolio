@@ -1,3 +1,5 @@
+'use client'
+
 import { useAnimation } from 'framer-motion'
 import InitialLoader from './components/InitialLoader/InitialLoader'
 import Presentation from './components/Presentation/Presentation'

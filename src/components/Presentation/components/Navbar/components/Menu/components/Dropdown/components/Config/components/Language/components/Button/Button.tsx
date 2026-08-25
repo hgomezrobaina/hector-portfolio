@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import Image from 'next/image'
 import { AppImage } from '../../../../../../../../../../../../../../modules/app/interfaces/image'
 import { LANGUAGES } from '../../../../../../../../../../../../../../modules/language/constants'
 import { useLanguage } from '../../../../../../../../../../../../../../modules/language/hooks'
@@ -22,16 +23,7 @@ export default function Button({ language, image }: Props) {
 
   return (
     <button className={CLASS} onClick={() => handleChangeLanguage(language)}>
-      <img
-        src={image.image}
-        alt={image.alt}
-        style={{
-          maxWidth: `${IMG_SIZE}px`,
-          minWidth: `${IMG_SIZE}px`,
-          maxHeight: `${IMG_SIZE}px`,
-          minHeight: `${IMG_SIZE}px`,
-        }}
-      />
+      <Image src={image.image} alt={image.alt} width={IMG_SIZE} height={IMG_SIZE} />
 
       <p className="text-base uppercase font-fontCode">{language}</p>
     </button>

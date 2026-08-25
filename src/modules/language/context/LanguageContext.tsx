@@ -1,3 +1,5 @@
+'use client'
+
 import { LANGUAGES } from '../constants'
 import React, { useEffect, useState } from 'react'
 

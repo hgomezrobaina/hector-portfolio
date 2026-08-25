@@ -1,5 +1,6 @@
 // eslint-disable-next-line import/named
 import { AnimationControls, motion } from 'framer-motion';
+import NextImage from 'next/image';
 import { APP_IMAGES } from '../../../../modules/app/constants/APP_IMAGES';
 
 interface Props {
@@ -14,7 +15,13 @@ export default function Image({ meImageAnimation }: Props) {
       transition={{ duration: 0.6 }}
       className="2xl:block hidden"
     >
-      <img src={APP_IMAGES.ME_IMAGE.image} alt={APP_IMAGES.ME_IMAGE.alt} className="w-[350px]" />
+      <NextImage
+        src={APP_IMAGES.ME_IMAGE.image}
+        alt={APP_IMAGES.ME_IMAGE.alt}
+        width={471}
+        height={840}
+        className="w-[350px] h-auto"
+      />
     </motion.div>
   );
 }
