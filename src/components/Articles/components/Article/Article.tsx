@@ -54,9 +54,9 @@ export default function Article({ article, left }: Props) {
       <Image image={article.image} title={article.title} />
 
       <div className="flex flex-col flex-1">
-        <h1 className="mb-2.5 font-fontCodeBold xl:text-2xl text-xl transition-colors duration-300 group-hover:text-blue-6 dark:group-hover:text-blue-4">
+        <h3 className="mb-2.5 font-fontCodeBold xl:text-2xl text-xl transition-colors duration-300 group-hover:text-blue-6 dark:group-hover:text-blue-4">
           {article.title}
-        </h1>
+        </h3>
 
         <p className="mb-3 leading-7 xl:text-base text-base dark:text-scale-12 text-left text-scale-8">
           {article.description}

@@ -1,8 +1,10 @@
 import { clsx } from 'clsx'
 import Image from 'next/image'
+import Link from 'next/link'
 import { AppImage } from '../../../../../../../../../../../../../../modules/app/interfaces/image'
-import { LANGUAGES } from '../../../../../../../../../../../../../../modules/language/constants'
+import { LANGUAGES, LANGUAGE_ROUTES } from '../../../../../../../../../../../../../../modules/language/constants'
 import { useLanguage } from '../../../../../../../../../../../../../../modules/language/hooks'
+import { savePreferredLanguage } from '../../../../../../../../../../../../../../modules/language/utils'
 
 interface Props {
   language: LANGUAGES
@@ -10,7 +12,7 @@ interface Props {
 }
 
 export default function Button({ language, image }: Props) {
-  const { handleChangeLanguage, language: actualLanguage } = useLanguage()
+  const { language: actualLanguage } = useLanguage()
 
   const IMG_SIZE = 24
   const isSelected = actualLanguage === language
@@ -30,10 +32,15 @@ export default function Button({ language, image }: Props) {
   )
 
   return (
-    <button className={CLASS} onClick={() => handleChangeLanguage(language)}>
+    <Link
+      href={LANGUAGE_ROUTES[language]}
+      hrefLang={language}
+      className={CLASS}
+      onClick={() => savePreferredLanguage(language)}
+    >
       <Image src={image.image} alt={image.alt} width={IMG_SIZE} height={IMG_SIZE} />
 
       <p className="text-base uppercase font-fontCode">{language}</p>
-    </button>
+    </Link>
   )
 }

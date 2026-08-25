@@ -37,6 +37,7 @@ export default function InitialLoader({
 
   return (
     <motion.div
+      aria-hidden
       animate={modalAnimate}
       transition={{ duration: 1 }}
       initial={{ height: '100vh' }}
@@ -54,7 +55,7 @@ export default function InitialLoader({
           animate={textAnimate}
           className="flex-col max-w-[1000px] h-[250px] items-center justify-center w-full"
         >
-          <h1 className="font-fontExtraBold esm:text-center">Héctor Gómez</h1>
+          <p className="font-fontExtraBold esm:text-center">Héctor Gómez</p>
         </motion.div>
 
         <motion.div
@@ -64,7 +65,7 @@ export default function InitialLoader({
       </motion.div>
 
       <div className="absolute bottom-10 left-10">
-        <h1 className="text-white font-fontExtraBold text-5xl esm:text-4xl">{cont}</h1>
+        <p className="text-white font-fontExtraBold text-5xl esm:text-4xl">{cont}</p>
       </div>
     </motion.div>
   )

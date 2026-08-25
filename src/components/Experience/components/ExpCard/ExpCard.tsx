@@ -63,7 +63,7 @@ export default function ExpCard({ limit, position, odd, notes }: Props) {
           className={CARD_CLASS}
           variants={variants}
         >
-          <h1 className="font-fontCodeBold text-xl mb-1">{position}</h1>
+          <h3 className="font-fontCodeBold text-xl mb-1">{position}</h3>
 
           <p className="mb-3 font-fontCode text-sm text-blue-6 dark:text-blue-4">{`${limit.init} - ${limit.finish}`}</p>
 

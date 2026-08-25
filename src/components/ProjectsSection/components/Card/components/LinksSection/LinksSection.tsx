@@ -10,7 +10,7 @@ interface Props {
 export default function LinksSection({ externalLink, githubLink, title }: Props) {
   return (
     <header className="flex w-full justify-between mb-2 items-center">
-      <h1 className="font-fontSemiBold text-2xl">{title}</h1>
+      <h3 className="font-fontSemiBold text-2xl">{title}</h3>
 
       <div className="flex gap-x-6 items-center">
         <ExternalLink

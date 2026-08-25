@@ -19,7 +19,7 @@ export default function Header({ icon: Icon, title }: Props) {
       <span className="flex items-center justify-center rounded-lg bg-white/15 p-2">
         <Icon size={22} />
       </span>
-      <h1 className="font-fontCodeBold tracking-wide">{title}</h1>
+      <h3 className="font-fontCodeBold tracking-wide">{title}</h3>
     </header>
   )
 }
