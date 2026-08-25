@@ -2,8 +2,10 @@
 import { LegacyAnimationControls } from 'framer-motion'
 import { Section } from '../../modules/shared/components'
 import { ArrowRight } from '../../modules/icon/components'
-import { Image, Navbar, Text } from './components'
 import { usePresentation } from './hooks'
+import Navbar from './components/Navbar/Navbar';
+import Text from './components/Text/Text';
+import Image from './components/Image/Image';
 
 interface Props {
   navBarAnimate: LegacyAnimationControls

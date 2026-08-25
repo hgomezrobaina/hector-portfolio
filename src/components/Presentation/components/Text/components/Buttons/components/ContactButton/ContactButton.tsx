@@ -27,7 +27,7 @@ export default function ContactButton() {
   return (
     <ExternalLink link={EMAIL_URL}>
       <button className={CLASS}>
-        <p className="font-fontCode">{CONTACT_ME}</p>
+        <p className="font-fontCode!">{CONTACT_ME}</p>
 
         <div className="transition-transform duration-200 group-hover:translate-x-2">
           <ArrowRight size={20} />

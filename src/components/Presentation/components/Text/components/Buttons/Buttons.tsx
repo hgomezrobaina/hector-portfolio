@@ -1,7 +1,7 @@
 import { clsx } from 'clsx'
-import { ContactButton } from './components'
 import { ExternalLink } from '../../../../../../modules/app/components'
 import { SOCIAL_MEDIA } from '../../../../../../modules/shared/constants'
+import ContactButton from './components/ContactButton/ContactButton';
 
 export default function Buttons() {
   const SOCIAL_CLASS = clsx(
