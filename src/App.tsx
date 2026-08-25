@@ -36,17 +36,16 @@ export default function App() {
   }
 
   return (
-    <div className="relative dark:text-white bg-gradient-to-b from-dark-blue-1 via-blue-1 to-dark-blue-1 dark:from-primaryDarkColor dark:via-dark-blue-11 dark:to-primaryDarkColor text-black transition-all duration-300 overflow-x-hidden">
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
-        <div className="animate-blob absolute -top-48 -left-48 w-[600px] h-[600px] rounded-full bg-blue-3/70 dark:bg-blue-7/30 blur-[110px]"></div>
+    <div className="relative dark:text-white bg-dark-blue-1 dark:bg-primaryDarkColor text-black transition-all duration-300 overflow-x-hidden">
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="animate-blob absolute -top-[300px] -left-[200px] w-[700px] h-[700px] rounded-full bg-blue-3/50 dark:bg-blue-7/20 blur-[130px]"></div>
         <div
-          className="animate-blob absolute top-1/4 -right-48 w-[550px] h-[550px] rounded-full bg-blue-4/40 dark:bg-dark-blue-7/35 blur-[110px]"
-          style={{ animationDelay: '-8s' }}
+          className="animate-blob absolute top-1/3 -right-[250px] w-[600px] h-[600px] rounded-full bg-blue-2/60 dark:bg-dark-blue-7/25 blur-[130px]"
+          style={{ animationDelay: '-11s' }}
         ></div>
-        <div
-          className="animate-blob absolute -bottom-48 left-1/5 w-[500px] h-[500px] rounded-full bg-blue-2/80 dark:bg-blue-9/35 blur-[110px]"
-          style={{ animationDelay: '-15s' }}
-        ></div>
+
+        <div className="absolute inset-0 bg-dots"></div>
+        <div className="absolute inset-0 bg-noise"></div>
       </div>
 
       <InitialLoader

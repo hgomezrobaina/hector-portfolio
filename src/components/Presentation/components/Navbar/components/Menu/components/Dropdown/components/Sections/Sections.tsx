@@ -8,10 +8,13 @@ export default function Sections({ handleChangeOpenMenu }: Props) {
   const { SECTIONS } = useSections()
 
   return (
-    <div className="flex flex-col gap-4 items-center">
+    <div className="flex flex-col gap-5 items-center">
       {SECTIONS.map((section, index) => (
         <a href={`#${section.id}`} key={index} onClick={handleChangeOpenMenu}>
-          <p className="cursor-pointer transition-all duration-200 px-3 rounded-sm py-1 dark:hover:bg-scale-10/50 hover:bg-scale-10/20">
+          <p className="cursor-pointer flex items-baseline gap-x-3 px-4 py-1.5 rounded-lg text-lg transition-all duration-200 hover:bg-blue-4/10 dark:hover:bg-white/5 hover:text-blue-6 dark:hover:text-blue-4">
+            <span className="font-fontCode text-sm text-secondColor dark:text-primaryColor">
+              {String(index + 1).padStart(2, '0')}.
+            </span>
             {section.navLabel}
           </p>
         </a>

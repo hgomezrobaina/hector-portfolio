@@ -1,6 +1,5 @@
 import { SectionContainer, SectionHeader } from '../../modules/app/components'
 import { useSections } from '../../modules/app/hooks'
-import { Me } from '../../modules/icon/components'
 import { Image, Text } from './components'
 
 export default function About() {
@@ -8,7 +7,7 @@ export default function About() {
 
   return (
     <SectionContainer id={ABOUT.id}>
-      <SectionHeader title={ABOUT.title} icon={Me} />
+      <SectionHeader title={ABOUT.title} index={1} />
 
       <div className="flex w-full items-center">
         <Image />

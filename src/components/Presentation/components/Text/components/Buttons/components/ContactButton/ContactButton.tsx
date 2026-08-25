@@ -9,10 +9,10 @@ export default function ContactButton() {
 
   const CLASS = clsx(
     'group flex items-center',
-    'py-2.5 esm:py-2 px-6 esm:px-6',
+    'py-2 esm:py-1.5 px-5 esm:px-5',
     'w-max',
     'text-xl esm:text-lg text-secondColor dark:text-primaryColor dark:hover:text-white hover:text-white',
-    'border-2 border-secondColor dark:border-primaryColor',
+    'border-1 border-secondColor dark:border-primaryColor',
     'hover:bg-secondColor dark:hover:bg-blue-8',
     'transition-all duration-300',
     'hover:-translate-y-0.5',

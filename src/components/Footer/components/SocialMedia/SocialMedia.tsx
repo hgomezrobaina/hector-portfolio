@@ -3,7 +3,7 @@ import { SOCIAL_MEDIA } from '../../../../modules/shared/constants'
 
 export default function SocialMedia() {
   return (
-    <div className="flex items-center gap-x-10">
+    <div className="flex items-center gap-x-8">
       {SOCIAL_MEDIA.map((s, i) => {
         const Icon = s.icon
 
@@ -11,9 +11,9 @@ export default function SocialMedia() {
           <ExternalLink
             key={i}
             link={s.link}
-            className="hover:stroke-secondColor dark:hover:stroke-primaryColor stroke-white fill-transparent transition-all duratin-300"
+            className="inline-flex stroke-scale-8 dark:stroke-scale-11 fill-transparent transition-all duration-300 hover:stroke-secondColor dark:hover:stroke-primaryColor hover:-translate-y-0.5"
           >
-            <Icon size={30} />
+            <Icon size={26} />
           </ExternalLink>
         )
       })}

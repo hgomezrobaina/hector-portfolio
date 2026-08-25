@@ -1,6 +1,5 @@
 import { SectionContainer, SectionHeader } from '../../modules/app/components'
 import { useSections } from '../../modules/app/hooks'
-import { Article } from '../../modules/icon/components'
 import { Article as ArticleComp } from './components'
 import { useArticles } from './hooks'
 
@@ -10,7 +9,7 @@ export default function Articles() {
 
   return (
     <SectionContainer id={ARTICLES_SECTION.id}>
-      <SectionHeader icon={Article} title={ARTICLES_SECTION.title} />
+      <SectionHeader title={ARTICLES_SECTION.title} index={5} />
 
       <div className="flex flex-col gap-y-3">
         {ARTICLES.map((article, index) => (

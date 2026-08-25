@@ -1,5 +1,4 @@
 import { SectionContainer, SectionHeader } from '../../modules/app/components'
-import { SourceCode } from '../../modules/icon/components'
 import { useSections } from '../../modules/app/hooks'
 import { motion } from 'framer-motion'
 import Card from './components/Card/Card'
@@ -11,7 +10,7 @@ export default function ProjectsSection() {
 
   return (
     <SectionContainer id={PROYECTS.id}>
-      <SectionHeader title={PROYECTS.title} icon={SourceCode} />
+      <SectionHeader title={PROYECTS.title} index={3} />
 
       <motion.div className="grid grid-cols-1 md:grid-cols-2 w-full gap-x-5 justify-between gap-y-4">
         {PROJECTS.map((project, index) => (

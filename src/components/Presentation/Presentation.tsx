@@ -15,7 +15,7 @@ export default function Presentation({ navBarAnimate, principalTextAnimate, meIm
   const { handleDownloadCV } = usePresentation()
 
   return (
-    <div className="relative flex w-full 2xl:h-screen 2xl:min-h-[740px] pt-36 2xl:pt-10 2xl:pb-0 justify-center px-8 items-center">
+    <div className="relative flex w-full 2xl:h-screen 2xl:min-h-185 pt-36 2xl:pt-10 2xl:pb-0 justify-center px-8 items-center">
       <Section>
         <div className="w-full h-full flex flex-col">
           <Navbar navBarAnimate={navBarAnimate} handleDownloadCV={handleDownloadCV} />

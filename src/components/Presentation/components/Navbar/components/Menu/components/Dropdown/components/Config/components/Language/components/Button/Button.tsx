@@ -12,14 +12,22 @@ interface Props {
 export default function Button({ language, image }: Props) {
   const { handleChangeLanguage, language: actualLanguage } = useLanguage()
 
-  const IMG_SIZE = 30
+  const IMG_SIZE = 24
   const isSelected = actualLanguage === language
 
-  const CLASS = clsx('flex items-center', 'gap-5', 'px-4 py-2', 'rounded-full', {
-    'bg-secondColor dark:bg-blue-8': isSelected,
-    'text-white': isSelected,
-    'border-[1px] border-scale-10': !isSelected,
-  })
+  const CLASS = clsx(
+    'flex items-center',
+    'gap-3',
+    'px-4 py-2',
+    'rounded-full',
+    'cursor-pointer',
+    'transition-all duration-300',
+    {
+      'bg-secondColor dark:bg-blue-8': isSelected,
+      'text-white': isSelected,
+      'border-[1px] border-scale-11 dark:border-dark-blue-9 hover:border-blue-5 dark:hover:border-blue-7': !isSelected,
+    },
+  )
 
   return (
     <button className={CLASS} onClick={() => handleChangeLanguage(language)}>

@@ -20,7 +20,7 @@ export default function Text({ principalTextAnimate }: Props) {
 
   return (
     <motion.div
-      className="flex flex-col max-w-[600px] gap-y-2"
+      className="flex flex-col max-w-150 gap-y-2"
       transition={{ duration: 0.8 }}
       animate={principalTextAnimate}
       initial={{ translateY: '1000px' }}
