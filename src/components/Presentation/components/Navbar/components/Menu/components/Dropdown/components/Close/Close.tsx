@@ -1,7 +1,7 @@
 import { X } from '../../../../../../../../../../modules/icon/components'
 
 interface Props {
-  handleChangeOpenMenu(): void
+  handleChangeOpenMenu: () => void
 }
 
 export default function Close({ handleChangeOpenMenu }: Props) {

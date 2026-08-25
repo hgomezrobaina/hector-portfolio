@@ -36,7 +36,19 @@ export default function App() {
   }
 
   return (
-    <div className="dark:text-white dark:bg-primaryDarkColor text-black transition-all duration-300 overflow-x-hidden">
+    <div className="relative dark:text-white bg-gradient-to-b from-dark-blue-1 via-blue-1 to-dark-blue-1 dark:from-primaryDarkColor dark:via-dark-blue-11 dark:to-primaryDarkColor text-black transition-all duration-300 overflow-x-hidden">
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
+        <div className="animate-blob absolute -top-48 -left-48 w-[600px] h-[600px] rounded-full bg-blue-3/70 dark:bg-blue-7/30 blur-[110px]"></div>
+        <div
+          className="animate-blob absolute top-1/4 -right-48 w-[550px] h-[550px] rounded-full bg-blue-4/40 dark:bg-dark-blue-7/35 blur-[110px]"
+          style={{ animationDelay: '-8s' }}
+        ></div>
+        <div
+          className="animate-blob absolute -bottom-48 left-1/5 w-[500px] h-[500px] rounded-full bg-blue-2/80 dark:bg-blue-9/35 blur-[110px]"
+          style={{ animationDelay: '-15s' }}
+        ></div>
+      </div>
+
       <InitialLoader
         blockAnimate={blockAnimate}
         initialAnimation={initialAnimation}

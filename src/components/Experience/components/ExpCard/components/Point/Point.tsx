@@ -1,4 +1,4 @@
-import clsx from 'clsx'
+import { clsx } from 'clsx'
 import { motion } from 'framer-motion'
 
 interface Props {
@@ -13,6 +13,9 @@ export default function Point({ odd, bigScreen }: Props) {
     'bg-blue-4',
     'z-30',
     'rounded-full',
+    'ring-4 ring-blue-4/20 dark:ring-blue-4/15',
+    'group-hover:ring-blue-4/45 dark:group-hover:ring-blue-4/35',
+    'transition-shadow duration-300',
     {
       'top-7': !bigScreen,
     },

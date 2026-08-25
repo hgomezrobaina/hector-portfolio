@@ -1,4 +1,4 @@
-import clsx from 'clsx'
+import { clsx } from 'clsx'
 import { IconProps } from '../../../../../../modules/icon/interfaces'
 
 interface Props {
@@ -6,19 +6,20 @@ interface Props {
   title: string
 }
 
-export default function Header({ icon, title }: Props) {
+export default function Header({ icon: Icon, title }: Props) {
   const HEADER_CLASS = clsx(
     'flex items-center justify-center',
-    'text-center text-white text-2xl py-4 stroke-white',
-    'bg-secondColor dark:bg-blue-7',
-    'gap-x-7',
-    'rounded-tl rounded-tr',
+    'text-center text-white text-2xl py-5 px-6 stroke-white',
+    'bg-gradient-to-r from-secondColor to-blue-6 dark:from-blue-7 dark:to-blue-9',
+    'gap-x-4',
   )
 
   return (
     <header className={HEADER_CLASS}>
-      {icon({ size: 25 })}
-      <h1 className="font-fontCodeBold">{title}</h1>
+      <span className="flex items-center justify-center rounded-lg bg-white/15 p-2">
+        <Icon size={22} />
+      </span>
+      <h1 className="font-fontCodeBold tracking-wide">{title}</h1>
     </header>
   )
 }

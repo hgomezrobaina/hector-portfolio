@@ -1,7 +1,7 @@
 import { useSections } from '../../../../../../../../../../modules/app/hooks'
 
 interface Props {
-  handleChangeOpenMenu(): void
+  handleChangeOpenMenu: () => void
 }
 
 export default function Sections({ handleChangeOpenMenu }: Props) {

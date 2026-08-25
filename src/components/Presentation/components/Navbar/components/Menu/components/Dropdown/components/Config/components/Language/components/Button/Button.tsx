@@ -1,4 +1,4 @@
-import clsx from 'clsx'
+import { clsx } from 'clsx'
 import Image from 'next/image'
 import { AppImage } from '../../../../../../../../../../../../../../modules/app/interfaces/image'
 import { LANGUAGES } from '../../../../../../../../../../../../../../modules/language/constants'

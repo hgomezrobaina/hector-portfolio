@@ -5,7 +5,7 @@ import { THEME } from '../constants'
 
 interface Props {
   theme: THEME
-  handleChangeTheme(theme: THEME): void
+  handleChangeTheme: (theme: THEME) => void
 }
 
 export const ThemeContext = createContext<Props>({

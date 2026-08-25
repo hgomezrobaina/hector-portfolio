@@ -1,12 +1,12 @@
-import { motion, AnimationControls } from 'framer-motion'
+import { motion, LegacyAnimationControls } from 'framer-motion'
 import { useState, useEffect } from 'react'
 
 interface Props {
-  initialAnimation(): void
-  initialShowText(): void
-  blockAnimate: AnimationControls
-  modalAnimate: AnimationControls
-  textAnimate: AnimationControls
+  initialAnimation: () => void
+  initialShowText: () => void
+  blockAnimate: LegacyAnimationControls
+  modalAnimate: LegacyAnimationControls
+  textAnimate: LegacyAnimationControls
 }
 
 export default function InitialLoader({

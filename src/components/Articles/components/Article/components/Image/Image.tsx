@@ -8,13 +8,13 @@ interface Props {
 
 export default function Image({ image, title }: Props) {
   return (
-    <div className="flex">
+    <div className="overflow-hidden rounded-lg shrink-0 w-full md:w-[240px] xl:w-[320px] h-[200px] md:h-auto md:min-h-[200px] md:self-stretch">
       <NextImage
         src={image.image}
         alt={title}
         width={1024}
         height={1024}
-        className="object-cover min-w-[230px] xl:min-w-[370px] h-[200px] rounded"
+        className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105"
       />
     </div>
   )

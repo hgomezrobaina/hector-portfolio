@@ -48,7 +48,7 @@ export default function Content() {
   })
 
   return (
-    <div className="flex flex-col text-lg gap-y-2 md:text-left text-justify w-full">
+    <div className="flex flex-col text-lg gap-y-3 text-left leading-relaxed text-scale-8 dark:text-scale-12 w-full">
       {FIRST}
       {SECOND}
       {THIRD}

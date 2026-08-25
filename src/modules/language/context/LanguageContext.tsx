@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react'
 
 interface Props {
   language: LANGUAGES
-  handleChangeLanguage(language: LANGUAGES): void
+  handleChangeLanguage: (language: LANGUAGES) => void
 }
 
 const LanguageContext = React.createContext<Props>({

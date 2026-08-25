@@ -1,42 +1,32 @@
-import clsx from 'clsx'
-import { ExternalLink } from '../../../../../../modules/app/components'
+import { clsx } from 'clsx'
 import { useTranslation } from '../../../../../../modules/language/hooks'
-import { useState } from 'react'
 import { ArrowRight } from '../../../../../../modules/icon/components'
 
-interface Props {
-  link: string
-}
-
-export default function Button({ link }: Props) {
+export default function Button() {
   const { TEXT } = useTranslation({ TEXT: { en: 'Read more', es: 'Leer más' } })
-
-  const [isHover, setIsHover] = useState(false)
 
   const CLASS = clsx(
     'flex items-center',
     'py-2 px-5',
     'xl:text-base text-sm',
-    'text-secondColor dark:text-primaryColor dark:hover:text-white hover:text-white',
+    'text-secondColor dark:text-primaryColor group-hover:text-white dark:group-hover:text-white',
     'border-2 border-secondColor dark:border-primaryColor',
-    'hover:bg-secondColor dark:hover:bg-blue-8',
+    'group-hover:bg-secondColor dark:group-hover:bg-blue-8',
     'transition-all duration-300',
-    'stroke-secondColor dark:stroke-primaryColor hover:stroke-white dark:hover:stroke-white',
+    'stroke-secondColor dark:stroke-primaryColor group-hover:stroke-white dark:group-hover:stroke-white',
     'gap-x-3',
-    'rounded-sm',
+    'rounded-lg',
   )
 
   return (
-    <div className="flex justify-end">
-      <ExternalLink link={link}>
-        <button className={CLASS} onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
-          <p className="font-fontCode">{TEXT}</p>
+    <div className="flex justify-end mt-auto">
+      <div className={CLASS}>
+        <p className="font-fontCode">{TEXT}</p>
 
-          <div className="transition-all duration-200" style={{ transform: `translateX(${isHover ? 6 : 0}px)` }}>
-            <ArrowRight size={20} />
-          </div>
-        </button>
-      </ExternalLink>
+        <div className="transition-transform duration-200 group-hover:translate-x-1.5">
+          <ArrowRight size={20} />
+        </div>
+      </div>
     </div>
   )
 }

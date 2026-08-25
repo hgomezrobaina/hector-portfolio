@@ -1,6 +1,6 @@
 import { THEME } from '../../constants'
 import { motion } from 'framer-motion'
-import clsx from 'clsx'
+import { clsx } from 'clsx'
 import { Dark, Light } from '../../../icon/components'
 import { useTheme } from '../../hooks'
 

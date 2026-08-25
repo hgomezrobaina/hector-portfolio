@@ -2,7 +2,7 @@ import { Menu as MenuIcon } from '../../../../../../modules/icon/components'
 import { Dropdowm } from './components'
 
 interface Props {
-  handleChangeOpenMenu(): void
+  handleChangeOpenMenu: () => void
   openMenu: boolean
 }
 

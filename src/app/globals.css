@@ -1,6 +1,77 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@custom-variant exsm {
+  @media (max-width: 500px) {
+    @slot;
+  }
+}
+
+@custom-variant esm {
+  @media (max-width: 640px) {
+    @slot;
+  }
+}
+
+@theme {
+  --breakpoint-2xl: 1400px;
+
+  --color-primaryColor: #48dbfb;
+  --color-secondColor: #20bcf2;
+  --color-primaryDarkColor: #0a192f;
+  --color-secondDarkColor: #233554;
+  --color-slate: #8892b0;
+  --color-lightSlate: #ccd6f6;
+
+  --color-scale-1: #161616;
+  --color-scale-2: #1c1c1c;
+  --color-scale-3: #232323;
+  --color-scale-4: #282828;
+  --color-scale-5: #2e2e2e;
+  --color-scale-6: #343434;
+  --color-scale-7: #3e3e3e;
+  --color-scale-8: #505050;
+  --color-scale-9: #707070;
+  --color-scale-10: #7e7e7e;
+  --color-scale-11: #bbb;
+  --color-scale-12: #e7e7e7;
+  --color-scale-13: #f6f6f6;
+
+  --color-dark-blue-1: #f4f6fb;
+  --color-dark-blue-2: #e7edf7;
+  --color-dark-blue-3: #cad8ed;
+  --color-dark-blue-4: #9cb7dd;
+  --color-dark-blue-5: #6791c9;
+  --color-dark-blue-6: #4373b4;
+  --color-dark-blue-7: #325a97;
+  --color-dark-blue-8: #2a497a;
+  --color-dark-blue-9: #263f66;
+  --color-dark-blue-10: #233554;
+  --color-dark-blue-11: #182339;
+
+  --color-blue-1: #ecfdff;
+  --color-blue-2: #cef8ff;
+  --color-blue-3: #a3eefe;
+  --color-blue-4: #48dbfb;
+  --color-blue-5: #1ec9f2;
+  --color-blue-6: #02acd8;
+  --color-blue-7: #0588b5;
+  --color-blue-8: #0c6d92;
+  --color-blue-9: #135977;
+  --color-blue-10: #154a64;
+  --color-blue-11: #072f45;
+
+  --animate-blob: blob 22s ease-in-out infinite;
+  --animate-float: float 6s ease-in-out infinite;
+
+  --font-fontCode: 'JetBrain Mono Regular';
+  --font-fontCodeBold: 'JetBrain Mono Bold';
+  --font-fontExtraBold: 'Poppins Extra Bold';
+  --font-fontBold: 'Poppins Bold';
+  --font-fontMedium: 'Poppins Medium';
+  --font-fontSemiBold: 'Poppins Semi Bold';
+}
 
 @font-face {
   font-family: 'JetBrain Mono Regular';
@@ -59,4 +130,48 @@
 
 * {
   font-family: 'Poppins Regular';
+}
+
+@keyframes blob {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(50px, -40px) scale(1.1);
+  }
+  66% {
+    transform: translate(-40px, 30px) scale(0.92);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-blob,
+  .animate-float {
+    animation: none;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  scrollbar-color: var(--color-blue-4) transparent;
+}
+
+html.dark {
+  scrollbar-color: var(--color-dark-blue-8) var(--color-primaryDarkColor);
+}
+
+::selection {
+  background-color: var(--color-blue-4);
+  color: var(--color-primaryDarkColor);
 }

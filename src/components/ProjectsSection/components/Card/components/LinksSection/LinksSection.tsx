@@ -15,13 +15,13 @@ export default function LinksSection({ externalLink, githubLink, title }: Props)
       <div className="flex gap-x-6 items-center">
         <ExternalLink
           link={githubLink}
-          className="dark:stroke-white stroke-black transition-all duration-300 hover:stroke-secondColor dark:hover:stroke-primaryColor"
+          className="inline-flex dark:stroke-white stroke-black transition-all duration-300 hover:stroke-secondColor dark:hover:stroke-primaryColor hover:-translate-y-0.5"
         >
           <GitHub size={24} />
         </ExternalLink>
         <ExternalLink
           link={externalLink}
-          className="dark:stroke-white stroke-black transition-all duration-300 hover:stroke-secondColor dark:hover:stroke-primaryColor"
+          className="inline-flex dark:stroke-white stroke-black transition-all duration-300 hover:stroke-secondColor dark:hover:stroke-primaryColor hover:-translate-y-0.5"
         >
           <Share size={24} />
         </ExternalLink>

@@ -1,10 +1,10 @@
 // eslint-disable-next-line import/named
-import { AnimationControls, motion } from 'framer-motion'
+import { LegacyAnimationControls, motion } from 'framer-motion'
 import { Buttons } from './components'
 import { useTranslation } from '../../../../modules/language/hooks'
 
 interface Props {
-  principalTextAnimate: AnimationControls
+  principalTextAnimate: LegacyAnimationControls
 }
 
 export default function Text({ principalTextAnimate }: Props) {
@@ -26,8 +26,10 @@ export default function Text({ principalTextAnimate }: Props) {
       initial={{ translateY: '1000px' }}
     >
       <p className="font-fontCode text-2xl text-secondColor dark:text-primaryColor esm:text-xl">{HELLO_MESSAGE}</p>
-      <h1 className="font-fontExtraBold md:text-7xl text-6xl exsm:text-5xl">Héctor Gómez</h1>
-      <div className="text-xl esm:text-lg mb-6 esm:mb-5 text-black dark:text-scale-11">
+      <h1 className="font-fontExtraBold md:text-7xl text-6xl exsm:text-5xl pb-2 bg-gradient-to-r from-primaryDarkColor to-blue-7 dark:from-white dark:to-blue-4 bg-clip-text text-transparent">
+        Héctor Gómez
+      </h1>
+      <div className="text-xl esm:text-lg mb-6 esm:mb-5 leading-relaxed text-scale-8 dark:text-scale-11">
         {FIRST_TEXT}{' '}
         <p className="inline font-fontMedium text-secondColor  dark:text-primaryColor">{FULLSTACK_TITLE}</p>{' '}
         {SECOND_TEXT}

@@ -1,12 +1,12 @@
-import clsx from 'clsx'
+import { clsx } from 'clsx'
 import { Download } from '../../../../../../modules/icon/components'
 import { useTranslation } from '../../../../../../modules/language/hooks'
 // eslint-disable-next-line import/named
-import { AnimationControls, motion } from 'framer-motion'
+import { LegacyAnimationControls, motion } from 'framer-motion'
 
 interface Props {
-  handleDownloadCV(): void
-  navBarAnimate: AnimationControls
+  handleDownloadCV: () => void
+  navBarAnimate: LegacyAnimationControls
 }
 
 export default function CvButton({ handleDownloadCV, navBarAnimate }: Props) {

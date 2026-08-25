@@ -7,13 +7,14 @@ interface Props {
   title: string
 }
 
-export default function SectionHeader({ icon, title }: Props) {
+export default function SectionHeader({ icon: Icon, title }: Props) {
   const { bigScreen } = useScreen(768)
 
   return (
-    <div className="flex items-center gap-x-10 dark:stroke-primaryColor stroke-secondColor mb-7 esm:gap-x-5">
-      {icon({ size: bigScreen ? 50 : 40 })}
+    <div className="flex w-full items-center gap-x-10 dark:stroke-primaryColor stroke-secondColor mb-7 esm:gap-x-5">
+      <Icon size={bigScreen ? 50 : 40} />
       <h1 className="font-fontBold text-4xl esm:text-3xl">{title}</h1>
+      <div className="h-px flex-1 min-w-8 bg-gradient-to-r from-blue-4/60 to-transparent dark:from-blue-7/70"></div>
     </div>
   )
 }

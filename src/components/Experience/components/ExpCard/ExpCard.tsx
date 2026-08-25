@@ -1,4 +1,4 @@
-import clsx from 'clsx'
+import { clsx } from 'clsx'
 import { Limit } from '../../interfaces/experience-card'
 import { Note, Point } from './components'
 import { useScreen } from '../../../../modules/shared/hooks'
@@ -18,15 +18,18 @@ export default function ExpCard({ limit, position, odd, notes }: Props) {
     'relative',
     'flex flex-col justify-center',
     'w-full',
-    'shadow-md',
-    'py-5 px-10',
-    'dark:bg-dark-blue-10',
-    'rounded',
-    'border-2 border-blue-4 dark:border-none',
+    'py-6 px-8',
+    'rounded-xl',
+    'border-[1.5px] border-blue-4/60 dark:border-dark-blue-9',
+    'bg-white dark:bg-dark-blue-10',
+    'shadow-md shadow-blue-4/10 dark:shadow-black/20',
+    'transition-[border-color,box-shadow] duration-300',
+    'hover:border-blue-5 dark:hover:border-blue-7',
+    'hover:shadow-xl hover:shadow-blue-4/25 dark:hover:shadow-blue-7/20',
   )
 
   const CONTAINER_CLASS = clsx(
-    'flex w-full items-center',
+    'group flex w-full items-center',
     'relative',
     { 'pl-7': (odd && bigScreen) || !bigScreen, 'pr-7': !odd && bigScreen },
     { 'col-end-2 col-start-2': odd && bigScreen },
@@ -60,9 +63,9 @@ export default function ExpCard({ limit, position, odd, notes }: Props) {
           className={CARD_CLASS}
           variants={variants}
         >
-          <h1 className="font-fontCodeBold text-xl mb-2">{position}</h1>
+          <h1 className="font-fontCodeBold text-xl mb-1">{position}</h1>
 
-          <p className="mb-2.5 dark:text-scale-11 text-scale-8 text-base">{`${limit.init} - ${limit.finish}`}</p>
+          <p className="mb-3 font-fontCode text-sm text-blue-6 dark:text-blue-4">{`${limit.init} - ${limit.finish}`}</p>
 
           <ul>
             {notes.map((note, index) => (

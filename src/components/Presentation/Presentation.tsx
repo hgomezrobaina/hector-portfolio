@@ -1,20 +1,21 @@
 // eslint-disable-next-line import/named
-import { AnimationControls } from 'framer-motion'
+import { LegacyAnimationControls } from 'framer-motion'
 import { Section } from '../../modules/shared/components'
+import { ArrowRight } from '../../modules/icon/components'
 import { Image, Navbar, Text } from './components'
 import { usePresentation } from './hooks'
 
 interface Props {
-  navBarAnimate: AnimationControls
-  principalTextAnimate: AnimationControls
-  meImageAnimation: AnimationControls
+  navBarAnimate: LegacyAnimationControls
+  principalTextAnimate: LegacyAnimationControls
+  meImageAnimation: LegacyAnimationControls
 }
 
 export default function Presentation({ navBarAnimate, principalTextAnimate, meImageAnimation }: Props) {
   const { handleDownloadCV } = usePresentation()
 
   return (
-    <div className="flex w-scrren 2xl:h-screen 2xl:min-h-[740px] pt-36 2xl:pt-10 2xl:pb-0 justify-center px-8 items-center">
+    <div className="relative flex w-full 2xl:h-screen 2xl:min-h-[740px] pt-36 2xl:pt-10 2xl:pb-0 justify-center px-8 items-center">
       <Section>
         <div className="w-full h-full flex flex-col">
           <Navbar navBarAnimate={navBarAnimate} handleDownloadCV={handleDownloadCV} />
@@ -25,6 +26,15 @@ export default function Presentation({ navBarAnimate, principalTextAnimate, meIm
           </div>
         </div>
       </Section>
+
+      <div
+        aria-hidden
+        className="hidden 2xl:flex absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce stroke-secondColor dark:stroke-primaryColor opacity-70"
+      >
+        <div className="rotate-90">
+          <ArrowRight size={26} />
+        </div>
+      </div>
     </div>
   )
 }
