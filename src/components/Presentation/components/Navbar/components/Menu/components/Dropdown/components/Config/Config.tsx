@@ -1,4 +1,5 @@
-import { Language, Theme } from './components'
+import Language from './components/Language/Language'
+import Theme from './components/Theme/Theme'
 
 export default function Config() {
   return (

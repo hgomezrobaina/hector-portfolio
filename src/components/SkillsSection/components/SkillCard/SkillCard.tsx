@@ -1,8 +1,12 @@
 import { clsx } from 'clsx'
-import { Skill } from '../../interfaces'
-import { Header, Tech } from './components'
+import { Skill } from '../../interfaces/skill'
+import useLanguage from '../../../../modules/language/hooks/useLanguage'
+import Header from './components/Header/Header'
+import Tech from './components/Tech/Tech'
 
 export default function SkillCard({ title, skills, icon }: Skill) {
+  const { language } = useLanguage()
+
   const CARD_CLASS = clsx(
     'flex h-full w-full flex-col overflow-hidden',
     'rounded-xl',
@@ -25,7 +29,7 @@ export default function SkillCard({ title, skills, icon }: Skill) {
 
   return (
     <div className={CARD_CLASS}>
-      <Header icon={icon} title={title} />
+      <Header icon={icon} title={title[language]} />
 
       <div className={CONTENT_CLASS}>
         {skills.map((tech, index) => (

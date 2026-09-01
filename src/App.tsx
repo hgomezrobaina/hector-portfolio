@@ -18,11 +18,11 @@ export default function App() {
   const principalTextAnimate = useAnimation()
   const meImageAnimation = useAnimation()
 
-  function initialShowText() {
+  const initialShowText = () => {
     textAnimate.start({ translateY: 0 })
   }
-
-  function initialAnimation() {
+ 
+  const initialAnimation =  () => {
     textAnimate.start({ translateY: -200 }).then(() => {
       textAnimate.start({ display: 'none' }).then(() => {
         blockAnimate

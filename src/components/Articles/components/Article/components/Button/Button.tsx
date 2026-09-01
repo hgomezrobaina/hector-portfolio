@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
-import { useTranslation } from '../../../../../../modules/language/hooks'
-import { ArrowRight } from '../../../../../../modules/icon/components'
+import useTranslation from '../../../../../../modules/language/hooks/useTranslation'
+import ArrowRight from '../../../../../../modules/icon/components/ArrowRight'
 
 export default function Button() {
   const { TEXT } = useTranslation({ TEXT: { en: 'Read more', es: 'Leer más' } })

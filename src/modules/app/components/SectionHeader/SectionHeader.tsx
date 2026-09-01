@@ -15,7 +15,7 @@ export default function SectionHeader({ title, index }: Props) {
         <h2 className="font-fontBold text-4xl esm:text-3xl">{title}</h2>
       </div>
 
-      <div className="h-px flex-1 min-w-8 bg-gradient-to-r from-blue-4/60 to-transparent dark:from-blue-7/70"></div>
+      <div className="h-px flex-1 min-w-8 bg-linear-to-r from-blue-4/60 to-transparent dark:from-blue-7/70"></div>
     </div>
   )
 }

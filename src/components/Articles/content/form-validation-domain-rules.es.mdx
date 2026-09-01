@@ -1,0 +1,348 @@
+Todos hemos pasado por esto. Llega un formulario nuevo, instalas React Hook Form, le sumas Zod o Yup, y en diez minutos tienes algo que "funciona". El problema no aparece ese día. Aparece tres meses después, cuando esa misma regla que validas al _crear_ también hay que validarla al _editar_, al _importar desde Excel_, y resulta que está escrita tres veces, ligeramente distinta cada una, y ninguna vive en un lugar que puedas señalar y decir _"aquí está la definición"_. La validación se diluyó por toda la app y dejó de tener dueño.
+
+Para no hablar en abstracto, durante el artículo usaré un caso concreto: validar el VIN de un auto —el número de chasis—, porque es una regla real de un proyecto personal y tiene la sustancia justa para mostrar el patrón. Pero todo lo que sigue aplica igual a un email, a un monto o a cualquier campo con reglas de negocio: el VIN es solo el ejemplo, no el tema.
+
+Un formulario típico con librería se ve más o menos así:
+
+```tsx
+const schema = z.object({
+  vin: z.string().length(17, "El VIN debe tener 17 caracteres"),
+  miles: z.number().min(0, "Las millas no pueden ser negativas"),
+  // ...y 8 campos más
+});
+
+const {
+  register,
+  handleSubmit,
+  watch,
+  formState: { errors },
+} = useForm({
+  resolver: zodResolver(schema),
+});
+```
+
+Funciona. Pero si te detienes a mirarlo, estás pagando tres costos que casi nunca se nombran:
+
+**1. El código limpio se diluye.** La regla de negocio termina repartida entre el `schema`, el `resolver`, los `register`, los `Controller` y el JSX. El conocimiento —_qué hace válido a un auto_— no tiene una casa. Está cableado a la UI. Y lo que está cableado a la UI no se reutiliza: se copia.
+
+**2. El rendimiento y el acople se pagan en silencio.** Estas librerías viven de suscripciones: `watch`, re-renders por tecla, estado interno que sincronizar. Para un formulario de contacto da igual. Para una pantalla con 15 campos, sub-formularios y validaciones cruzadas, tu componente queda atado al ciclo de vida de la librería —no al tuyo— y empiezas a pelear contra ella en lugar de usarla.
+
+**3. La comodidad de desarrollo es una trampa.** Es comodísimo _al principio_. Pero esa misma regla, ¿cómo la pruebas sin montar un componente? ¿Cómo la mueves al backend? ¿Cómo la traduces a dos idiomas sin ensuciar el schema? Cada cosa que la librería te resolvió gratis, te la cobra el día que necesitas salir de su molde.
+
+Ninguno de estos problemas es culpa de Formik ni de React Hook Form. Son excelentes en lo que hacen: **cablear inputs a estado**. El problema es que les delegamos algo que nunca fue su trabajo —_decidir qué es válido_— y ahí es donde el dominio se nos escapa hacia la capa de presentación.
+
+## La tesis
+
+Todo el enfoque que voy a mostrar sale de una sola idea:
+
+> **Un campo inválido es una regla de dominio, no un estado de la UI.**
+
+Si lo aceptas, las consecuencias son directas. La validación no pertenece al componente: pertenece al dominio, igual que tus modelos y tus servicios. Una regla deja de ser una línea en un schema y pasa a ser una _unidad nombrable y testeable_. El componente vuelve a su único trabajo —pintar y disparar— y le pregunta al dominio "¿esto es válido?"
+
+No es más código por gusto. Es mover el conocimiento del negocio al lugar donde se puede reutilizar, probar sin React, traducir sin esfuerzo y, el día que toque, llevar al backend sin reescribir una línea de lógica.
+
+En lo que sigue voy a desarmar el sistema que uso en mis proyectos: un contrato de cuatro líneas, reglas como clases, y cómo todo eso se consume desde un componente con un simple `useState`.
+
+## El contrato mínimo: una regla y un error
+
+Antes de escribir una sola validación necesitamos definir dos cosas: **qué es una regla** y **qué es un error**. Ambas son bastante pequeñas.
+
+Una regla es cualquier objeto que sepa responder _"¿qué está mal aquí?"_:
+
+```ts
+export interface ValidationRule {
+  validate(): AppException[];
+}
+```
+
+Eso es todo. Sin estado, sin React, sin genéricos. Una `ValidationRule` recibe lo que necesite por su constructor y devuelve una **lista de errores**. Si la lista está vacía, el campo es válido. El detalle que parece menor pero no lo es: devuelve un _array_, no un `boolean` ni un `string`. Un campo puede fallar por varias razones a la vez, y quien valida solo reporta —no decide cómo se muestran.
+
+¿Y qué es un error? No un string suelto:
+
+```ts
+export class AppException {
+  readonly id: string;
+  readonly message: TranslationConfig;
+
+  constructor({ id, message }: { id: string; message: TranslationConfig }) {
+    this.id = id;
+    this.message = message;
+  }
+}
+```
+
+Dos campos, dos decisiones.
+
+El `message` es un `TranslationConfig` (`{ es, en }`): **el error nace ya traducido**, en lo profundo del dominio, en lugar de ser un string que alguien tiene que acordarse de pasar por i18n en la capa de UI.
+
+> **Nota:** No todos los sistemas necesitan esto. Si tu app es multi-idioma te ahorra mantener un mapa de claves sincronizado con cada regla; si no, puedes dejar `message` como un simple string. Lo dejo aquí y sigo, porque la pieza realmente interesante es la otra.
+
+El `id` es lo que convierte este error en algo **testeable de verdad**. Un `id` estable e independiente del idioma —`"car.vin.empty"`, `"car.miles.negative"`— te da un identificador que no cambia aunque reescribas el texto ni cambies el idioma. Y eso desbloquea dos cosas:
+
+- **En pruebas E2E**, puedes pintar ese `id` como `data-error-id` en el DOM y aseverar _"apareció el error de VIN vacío"_ sin acoplar la prueba al texto exacto del mensaje (que cambia, que se traduce, que se ajusta). La prueba verifica la _regla_, no la _copia_.
+- **En pruebas unitarias**, puedes ir un paso más allá y hacer que cada error sea su propia subclase de `AppException`:
+
+  ```ts
+  export class VinEmptyException extends AppException {
+    constructor() {
+      super({
+        id: "car.vin.empty",
+        message: {
+          es: "El VIN no puede estar vacío",
+          en: "The VIN cannot be empty",
+        },
+      });
+    }
+  }
+  ```
+
+  Y entonces el assert es de tipos, no de strings:
+
+  ```ts
+  const errors = new CarVinValidator("").validate();
+
+  expect(errors.some((e) => e instanceof VinEmptyException)).toBe(true);
+  // o, si prefieres el id:
+  expect(errors[0].id).toBe("car.vin.empty");
+  ```
+
+  Compáralo con la alternativa frágil de toda la vida: `expect(errors[0].message).toContain("vacío")`. Esa aserción se rompe el día que alguien corrige una tilde. La de arriba sobrevive a cualquier cambio de copy, en cualquier idioma.
+
+Con eso, el contrato completo del sistema son dos piezas:
+
+- **`ValidationRule`** — "sé decidir si algo es válido y, si no, enumero exactamente qué falló".
+- **`AppException`** — "soy un error con identidad estable (`id`) y, ya de paso, sé decirme en todos los idiomas que la app habla".
+
+Todo lo que viene —reglas, composición, el disparo desde el componente— se apoya en estas dos. No hay más "framework" que aprender: una interfaz y una clase de datos. El día que entra alguien nuevo al proyecto, esto es _todo_ lo que tiene que leer para entender cómo validamos.
+
+> **Nota de diseño:** que `validate()` no reciba argumentos es a propósito. El valor entra por el **constructor**, no por el método. Eso hace que cada regla sea un objeto autocontenido —lo construyes con su dato y queda listo para preguntarle—, y es lo que permite meterlas todas en una lista y correrlas en bucle sin que el orquestador sepa nada de cada una.
+
+## Una regla = una clase
+
+Esta es la idea central, y ahora que tenemos el contrato cabe en muy poco. Una regla de negocio es una clase que implementa `ValidationRule`, mete toda su lógica adentro y devuelve los errores que encuentre.
+
+Tomemos una con sustancia. Un VIN (el número de chasis de un auto) es válido si no está vacío, tiene exactamente 17 caracteres y termina en al menos 5 números. Tres formas distintas de fallar, una sola clase:
+
+```ts
+export class CarVinValidator implements ValidationRule {
+  constructor(private readonly value: string) {}
+
+  validate(): AppException[] {
+    const value = this.value.trim();
+
+    if (value.length === 0) {
+      return [
+        new AppException({
+          id: "car.vin.empty",
+          message: {
+            es: "El VIN no puede estar vacío",
+            en: "The VIN cannot be empty",
+          },
+        }),
+      ];
+    }
+
+    if (value.length !== 17) {
+      return [
+        new AppException({
+          id: "car.vin.length",
+          message: {
+            es: "El VIN debe tener 17 caracteres",
+            en: "The VIN must be 17 characters",
+          },
+        }),
+      ];
+    }
+
+    const end = value.slice(-5);
+
+    if (end.split("").some((c) => isNaN(Number(c)))) {
+      return [
+        new AppException({
+          id: "car.vin.end-numbers",
+          message: {
+            es: "El VIN debe terminar con al menos 5 números",
+            en: "The VIN must end with at least 5 numbers",
+          },
+        }),
+      ];
+    }
+
+    return [];
+  }
+}
+```
+
+Eso es todo. Se lee de arriba abajo como la definición del negocio: _vacío → error; no son 17 → error; no termina en números → error; si no, válido_. El conocimiento de "qué hace válido a un VIN" ahora tiene un lugar con nombre y apellido —`CarVinValidator`— en vez de estar diluido entre un schema, un resolver y el JSX.
+
+Y mira lo que ganaste casi gratis frente a la versión con librería:
+
+**Se prueba sin nada alrededor.** Es una clase de TypeScript sin dependencias de React ni del DOM. La construyes con un valor y le preguntas:
+
+```ts
+const errors = new CarVinValidator("123").validate();
+
+expect(errors[0].id).toBe("car.vin.length"); // 3 caracteres → falla por longitud
+```
+
+Y aquí es donde el `id` de la sección anterior se paga solo: la prueba verifica la **regla** (`car.vin.length`), no el **texto** del mensaje. Puedes reescribir la copy, corregir una tilde o agregar un tercer idioma, y la prueba sigue verde. Compáralo con `expect(errors[0].message).toContain("17")`, que se rompe a la primera reformulación.
+
+**Vive en el dominio, no en la UI.** `CarVinValidator` no importa nada del front. El día que quieras probarlo, reusarlo en otra pantalla o incluso compartir la lógica con el backend, te llevas la clase entera sin arrastrar una dependencia de presentación.
+
+> Si una regla tuviera lógica de verdad pesada y la quisieras compartir tal cual con el backend, podrías extraer esa parte a una clase pura aparte y dejar este validador como un fino adaptador que solo le pone los mensajes. Es una optimización para casos puntuales —no el caso normal—, así que no la persigas por defecto: una clase por regla alcanza para la mayoría de ocasiones.
+
+## Composición: un formulario es una lista de reglas
+
+Ya tenemos reglas sueltas. Falta el orquestador que las junte y las corra.
+
+```ts
+export abstract class Validator {
+  private readonly rules: ValidationRule[];
+
+  constructor(rules: ValidationRule[]) {
+    this.rules = rules;
+  }
+
+  execute({ success, error }: Props) {
+    const errors: AppException[] = [];
+
+    for (const rule of this.rules) {
+      errors.push(...rule.validate());
+    }
+
+    if (errors.length === 0) {
+      success();
+    } else {
+      error(errors);
+    }
+  }
+}
+```
+
+El `Validator` no sabe nada de VINs, ni de millas, ni de autos. Solo sabe una cosa: _recibí una lista de reglas, las corro todas, junto los errores y bifurco_. Si no hubo errores, llama a `success()`; si los hubo, se los pasa a `error()`. Esto es justo lo que el contrato anticipaba: como cada regla recibe su dato por el constructor, el orquestador puede recorrerlas en bucle sin conocer ni una.
+
+¿Y cómo se ve validar "un auto entero"? Una clase que **extiende `Validator` y, en su constructor, ensambla las reglas**:
+
+```ts
+export class CarValidator extends Validator {
+  constructor({ vin, miles, year, brand, model /* ... */ }: CarValidatorProps) {
+    super([
+      new CarVinValidator(vin),
+      new CarMilesValidator(miles),
+      new CarYearValidator(year),
+      new NotNullValidator(brand, {
+        id: "car.brand.required",
+        message: {
+          es: "El auto debe tener una marca",
+          en: "The car must have a brand",
+        },
+      }),
+      new NotNullValidator(model, {
+        id: "car.model.required",
+        message: {
+          es: "El auto debe tener un modelo",
+          en: "The car must have a model",
+        },
+      }),
+    ]);
+  }
+}
+```
+
+Aquí pasan dos cosas que vale la pena subrayar.
+
+**Un formulario nuevo es ensamblar, no reescribir.** Validar un auto no implica escribir lógica de validación: implica _elegir qué reglas aplican y pasarles sus datos_. La lógica ya existe, encapsulada en cada `ValidationRule`. El validador de la entidad es una lista de la compra.
+
+**Las reglas genéricas se reusan en todos lados.** Fíjate en `NotNullValidator`. No es específico de autos: es una regla reutilizable que recibe el valor y el error a lanzar si es `null`:
+
+```ts
+export class NotNullValidator<T> implements ValidationRule {
+  constructor(
+    private readonly value: T | null,
+    private readonly exception: AppException,
+  ) {}
+
+  validate(): AppException[] {
+    return this.value === null ? [this.exception] : [];
+  }
+}
+```
+
+Diez líneas que validan "este campo es obligatorio" para _cualquier_ tipo, en _cualquier_ formulario. La marca de un auto, el cliente de un deal, el rol de un usuario: todos reusan la misma pieza, solo cambiando el mensaje. Eso es lo opuesto a copiar `z.string().min(1)` por todo el código: la regla vive una vez y se compone donde haga falta.
+
+Y como `Validator` es abstracto y recibe un array, no hay nada que te ate a una jerarquía rígida. ¿Necesitas una regla condicional según otro campo? La metes en la lista cuando corresponda. El orquestador ni se entera —para él, todo es "una regla que devuelve errores".
+
+## El consumo: el componente solo dispara
+
+Llegamos al único punto donde todo esto toca React. Y la promesa de la intro se cumple aquí: el componente no sabe _cómo_ se valida nada. Solo arma su estado, construye el validador y aprieta el gatillo.
+
+Así se ve un formulario de login completo, en un hook:
+
+```tsx
+export default function useLogin() {
+  const { errors } = useToast();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const handleSubmit = () => {
+    const validator = new UserLoginValidator({ email, password });
+
+    validator.execute({
+      success: () => loginUser({ email, password }).then(/* ... */),
+      error: errors,
+    });
+  };
+
+  return { email, setEmail, password, setPassword, handleSubmit };
+}
+```
+
+Léelo despacio, porque aquí está todo el argumento del artículo condensado:
+
+- **El estado es `useState` plano.** Un `useState` por campo. Sin `useForm`, sin `register`, sin `control`, sin resolver. React hace lo que React sabe hacer y nada más.
+- **`execute` bifurca por ti.** Si todas las reglas pasan, corre `success` —que encadena la llamada al backend—. Si alguna falla, los errores van directo a `error`. El componente no escribe ni un `if`: declara qué hacer en cada rama y se desentiende.
+- **`error: errors` conecta el dominio con la UI en una línea.** `errors` viene de `useToast`, y recibe el `AppException[]` tal cual. Como cada error ya nació traducido, el toast solo lee `message[idioma]` y lo pinta. La regla viajó desde el dominio hasta la pantalla sin que nadie tradujera nada por el camino.
+
+Y el JSX que consume ese hook se mantiene **completamente ajeno al sistema de validación**:
+
+```tsx
+<FormInput label={{ es: "Correo", en: "Email" }} required>
+  <input value={email} onChange={(e) => setEmail(e.target.value)} />
+</FormInput>
+```
+
+Aquí cierra el contraste que abrimos en la intro. Tu input habla `value` / `onChange`. Compáralo con lo que la librería te obliga a escribir:
+
+```tsx
+// React Hook Form: el markup ahora habla el dialecto de la librería
+<input {...register("email")} />
+
+<Controller
+  name="email"
+  control={control}
+  render={({ field }) => <MyInput {...field} />}
+/>
+```
+
+Ese `register`, `control` o `<Controller>` son **props de fontanería que se cuelan por todo tu árbol de componentes**. Y el costo no es estético —que el JSX se vea más cargado da igual—; el costo es **acoplamiento**: el día que quieras cambiar de librería, o sacarla, no tocas un archivo de configuración, tocas _cada input de cada formulario_. Tu capa de presentación quedó casada con una dependencia externa.
+
+En este enfoque esa atadura no existe. El `FormInput` no sabe que hay validación; el `<input>` no sabe que hay reglas; el componente solo sabe `useState` y "al enviar, dispara el validador". Si mañana borraras toda la carpeta de validación, el JSX **no se enteraría**. Esa independencia —UI que pinta, dominio que valida, sin props que los aten— es justamente lo que prometimos cuando dijimos _"un campo inválido es una regla de dominio, no un estado de la UI"_.
+
+---
+
+## Dos aclaraciones
+
+**Sobre validaciones asíncronas.** En todos los ejemplos, `validate()` y `execute()` son síncronos: la regla recibe su dato, decide y devuelve la lista de errores en el acto. Para la mayoría de las validaciones de formulario eso es justo lo que quieres. Pero el contrato no te ata a lo síncrono: si necesitas una regla que dependa de una llamada al servidor —comprobar que un email no esté ya registrado, por ejemplo—, nada te impide hacer que `validate()` devuelva una `Promise<AppException[]>` y que `execute()` la espere con `await`. La idea —una regla es un objeto que sabe enumerar qué está mal— no cambia; solo cambia que ahora la respuesta puede tardar. Úsalo donde haga falta, sin convertir todo el sistema en asíncrono porque sí.
+
+**Sobre el framework.** Usé React en los ejemplos porque es lo que suelo usar en producción, pero fíjate que el corazón del sistema —`ValidationRule`, `AppException`, el `Validator` que compone reglas— es TypeScript puro: no importa ni una línea de React. La capa que toca el framework es mínima y vive solo en el componente (el `useState`, el `handleSubmit`). Llevar esto a Vue, Angular o Svelte es reescribir esa capita fina —un `ref` en vez de `useState`, un método del componente en vez de un hook— y reutilizar todo el dominio tal cual.
+
+---
+
+## Hablemos
+
+¿Tienes dudas, comentarios o un enfoque distinto? Me encantará leerte. Puedes encontrarme aquí:
+
+- **GitHub** — [hgomezrobaina](https://github.com/hgomezrobaina)
+- **LinkedIn** — [Héctor Gómez Robaina](https://www.linkedin.com/in/hector-gomez-robaina)
+- **X** — [@hgomezrobaina](https://x.com/hgomezrobaina)

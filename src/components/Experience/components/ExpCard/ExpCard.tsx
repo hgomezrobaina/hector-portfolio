@@ -1,13 +1,13 @@
 import { clsx } from 'clsx'
-import { Limit } from '../../interfaces/experience-card'
-import { Note, Point } from './components'
-import { useScreen } from '../../../../modules/shared/hooks'
+import Note from './components/Note/Note'
+import Point from './components/Point/Point'
+import useScreen from '../../../../modules/shared/hooks/useScreen'
 import { Variants, motion } from 'framer-motion'
 
 interface Props {
   notes: Array<string>
   position: string
-  limit: Limit
+  limit: { init: string; finish: string }
   odd: boolean
 }
 

@@ -1,14 +1,29 @@
 export const APP_IMAGES = {
-  ME_IMAGE: { image: '/images/me.png', alt: 'chacaponquin_avatar' },
+  ME_IMAGE: { image: '/images/me.png', alt: '3D avatar illustration of Héctor Gómez' },
   PROJECTS: {
-    CHACA_NPM_IMAGE: { image: '/images/projects/chaca-npm.webp', alt: 'chaca-image' },
-    CHACA_WEB_IMAGE: { image: '/images/projects/chaca-web.webp', alt: 'chaca-web-image' },
-    CRYPTO_IMAGE: { image: '/images/projects/crypto.webp', alt: 'ch-crypto-app' },
-    DEALERNODE: { image: '/images/projects/dealernode.webp', alt: 'dealernode' },
-    VISA4UCBA: { image: '/images/projects/visa4cuba.webp', alt: 'visa4cuba' },
+    CHACA_NPM_IMAGE: {
+      image: '/images/projects/chaca-npm.webp',
+      alt: 'Chaca logo, an npm package for generating realistic fake datasets',
+    },
+    CHACA_WEB_IMAGE: {
+      image: '/images/projects/chaca-web.webp',
+      alt: 'Screenshot of the Chaca Web schema editor showing dataset relations between entities',
+    },
+    CRYPTO_IMAGE: {
+      image: '/images/projects/crypto.webp',
+      alt: 'Screenshot of the CH-Crypto landing page displaying live cryptocurrency lending rates',
+    },
+    DEALERNODE: {
+      image: '/images/projects/dealernode.webp',
+      alt: 'Screenshot of the Autodirect Dealernode dashboard showing car dealership sales and inventory metrics',
+    },
+    VISA4UCBA: {
+      image: '/images/projects/visa4cuba.webp',
+      alt: 'Screenshot of the Visa4Cuba homepage for applying to Cuba travel visas online',
+    },
   },
-  LOGO: { image: '/logo/portfolio_logo.png', alt: 'hector_portfolio_logo' },
-  ABOUT_ME: { image: '/images/about-me.webp', alt: 'hector-about-me' },
+  LOGO: { image: '/logo/portfolio_logo.png', alt: 'Héctor Gómez portfolio logo' },
+  ABOUT_ME: { image: '/images/about-me.webp', alt: 'Illustration of Héctor Gómez coding at his desk' },
   SKILLS: {
     CSS: { image: '/images/skills/css.svg', alt: 'css' },
     GIT: { image: '/images/skills/git.svg', alt: 'git' },
@@ -33,8 +48,17 @@ export const APP_IMAGES = {
     SPAIN: { image: '/images/flags/spain.png', alt: 'spanish-language' },
   },
   ARTICLES: {
-    FIRST: { image: '/images/articles/1.webp', alt: 'first-article' },
-    SECOND: { image: '/images/articles/2.webp', alt: 'second-article' },
-    THIRD: { image: '/images/articles/3.webp', alt: 'third-article' },
+    FORM_VALIDATION: {
+      image: '/images/articles/form-validation.jpg',
+      alt: 'Abstract illustration of a form field validated by domain rules',
+    },
+    NESTJS_REPOSITORY: {
+      image: '/images/articles/nest-repository.png',
+      alt: 'Abstract illustration of a domain collection backed by a database',
+    },
+    NESTJS_CRITERIA: {
+      image: '/images/articles/criteria-nestjs.png',
+      alt: 'Abstract illustration of typed criteria filters with a non-public field excluded',
+    },
   },
 } as const

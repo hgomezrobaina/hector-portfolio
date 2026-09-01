@@ -1,4 +1,4 @@
-import { Copyright } from '../../../../modules/icon/components'
+import Copyright from '../../../../modules/icon/components/Copyright'
 
 export default function Left() {
   return (

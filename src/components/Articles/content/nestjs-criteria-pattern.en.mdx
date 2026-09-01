@@ -1,0 +1,1093 @@
+## Five parameters and a `find()`
+
+The example running through this article is a library catalogue. A book stores this:
+
+```ts
+// src/book/book.schema.ts
+@Schema({ timestamps: true })
+export class Book {
+  @Prop() title: string;
+  @Prop({ type: Types.ObjectId, ref: "Author" }) author: Types.ObjectId;
+  @Prop() publishedAt: Date;
+  @Prop() copies: number; // copies on the shelf
+  @Prop() available: boolean;
+  @Prop() acquisitionPrice: number; // what it cost us: internal, never published
+}
+```
+
+The author's name is not here: it lives in the `authors` collection, on the other side of that reference. And the screen consuming the catalogue is a table with a search box, per-column filters and pagination.
+
+The endpoint feeding it is written once and grows by accretion. It starts returning a page with a fixed order, and by the time the table has all its filters it has become this:
+
+```ts
+// src/book/book.controller.ts
+@Controller("books")
+export class BookController {
+  constructor(
+    @InjectModel(Book.name) private readonly model: Model<BookDocument>,
+  ) {}
+
+  @Get()
+  async getAll(
+    @Query("title") title?: string,
+    @Query("available") available?: string,
+    @Query("minCopies") minCopies?: string,
+    @Query("sortBy") sortBy?: string,
+    @Query("page") page?: string,
+  ) {
+    const filter: FilterQuery<BookDocument> = {};
+
+    if (title) {
+      filter.title = { $regex: title, $options: "i" };
+    }
+
+    if (available) {
+      filter.available = available === "true";
+    }
+
+    if (minCopies) {
+      filter.copies = { $gte: Number(minCopies) };
+    }
+
+    const current = Number(page ?? 1);
+
+    const [items, total] = await Promise.all([
+      this.model
+        .find(filter)
+        .sort({ [sortBy ?? "createdAt"]: -1 })
+        .skip((current - 1) * 20)
+        .limit(20),
+      this.model.countDocuments(filter),
+    ]);
+
+    return { items: items, total: total, page: current };
+  }
+}
+```
+
+There are correct decisions inside that method: the total comes out of the same filter as the items, so the pagination cannot contradict itself, and both queries travel in parallel. A list written like this holds years of production without an incident, and its behaviour is not what this article sets out to fix.
+
+What is worth measuring is what ends up written outside the file. The endpoint's signature and the URL needed to call it are, together, a contract:
+
+```
+GET /books?title=dune&available=true&minCopies=3&sortBy=publishedAt&page=2
+```
+
+That contract is declared nowhere and is already in production: the moment somebody shares that URL in a ticket or writes it into an import script, the five names in the query string have consumers outside the repository. And the vocabulary it is written in is not the catalogue's, it is the collection's: `sortBy=publishedAt` names a document field exactly as the database calls it, `minCopies` also pins down an operator that does not appear in the name, and whoever reads `title=dune` cannot tell whether it looks for an exact or a partial match, because that is only written inside the `if`.
+
+## Where this is going
+
+What this article builds is the Criteria pattern: an object describing a list —what is filtered, how it is sorted, which page— travelling from the client to the repository and being translated twice, once at each border. It is worth seeing the result before the analysis, because everything that follows is the justification for this shape and not another.
+
+The same table, against the same endpoint, is requested like this:
+
+```
+GET /books
+  ?filters[0][field]=title&filters[0][operator]=CONTAINS&filters[0][value][0]=dune
+  &filters[1][field]=authorName&filters[1][operator]=EQUAL&filters[1][value][0]=Herbert
+  &order[by]=publishedAt&order[type]=DESC
+  &page=2&pageSize=20
+```
+
+The response carries the page and what is needed to draw the paginator:
+
+```json
+{ "items": [], "totalItems": 143, "totalPages": 8, "pageSize": 20 }
+```
+
+And the controller is left without a single column name inside it:
+
+```ts
+// src/book/infrastructure/nest/book.controller.ts
+@Get()
+async getAll(
+  @Query() request: CriteriaRequest,
+): Promise<PaginationResponse<BookResponse>> {
+  const useCase = new GetAllBooks(this.repository, new BookCriteriaRequestMapper());
+
+  return await useCase.execute({ request: request });
+}
+```
+
+With both URLs side by side, four differences show up without reading the server:
+
+- **The operator is written down.** `CONTAINS` travels in the request, so whoever reads the URL knows `dune` looks for a partial match. In the previous version that lived inside an `if`.
+- **The name is not the column's.** `authorName` exists in no document —the author is in another collection— and it is still filtered and sorted by like any other column.
+- **The endpoint's signature does not grow.** Adding the copies filter, the date range or the tenth field changes not one line of the controller: it changes one line of an enum.
+- **The format is the same for every list.** Authors and loans are requested the same way, so the client writes one serialiser instead of one per screen.
+
+None of that comes free: getting there is four files per entity plus one translator per database engine, and there are projects where it does not pay off. The rest of the article is why this shape, what it costs and when it is not worth it.
+
+## Five coupling points, and one of a different kind
+
+The places where the endpoint and whoever calls it are tied together are five, and they are not all of the same kind. The first four are visible by reading the file; the fifth only becomes visible when the second list appears.
+
+**1. The operator lives in the body of the method.** `title` is resolved with a `$regex` and `minCopies` with a `$gte`, but neither name says so, which means the filter's behaviour can change without touching the signature: turning that `$regex` into an exact match breaks no compilation, and the only signal is that responses start bringing back fewer rows.
+
+**2. The parameter name is the field name.** `sortBy=publishedAt` works because that string is passed straight to `.sort()`. Renaming the property in the schema leaves two ways out: breaking URLs that are already circulating, or keeping an alias table from old name to new one inside the controller — which is the very translation map the pattern ends up formalising, written too late and only for the field that moved.
+
+**3. The signature grows with fields multiplied by operators.** `minCopies` covers one of the possible comparisons over `copies`; the maximum is another parameter and the exact range a third. The endpoint does not accumulate one parameter per column, it accumulates one per question somebody wanted to ask a column.
+
+**4. What can be filtered is written nowhere: it is the residue of the `if`s.** To know what the endpoint accepts you have to read the whole method and keep the branches. With sorting there are not even branches to read, because `sortBy` goes straight into `.sort()`: any path in the document is a valid order, including those of the fields the list does not return.
+
+**5. The format is private to this endpoint.** The next list —authors, loans, copies— decides everything again from scratch: whether the page is requested with `page` or `offset`, whether ordering is `sortBy` plus `order` or a single `sort=-publishedAt`, whether a boolean travels as `true`, as `1` or as the mere presence of the parameter. On the client side, every screen writes its own serialiser and none resembles the previous one enough to be shared.
+
+The first four are coupling nuisances: they live inside one file, they are fixed by editing that file, and what they cost to fix does not depend on how long you waited. The fifth is of a different kind. It lives in no file, but in the agreement between whoever writes the endpoint and whoever consumes it, and it does not grow with the number of fields: it grows with the number of lists multiplied by the number of clients.
+
+{/*
+FIGURE 1 — the coupling map (section "Five coupling points").
+Source: diagrams/02-acoplamiento.d2 · still to be exported to SVG + PNG@2x.
+Twin of the thesis figure: same framing, same boxes, same order.
+Touch one and you touch the other: all of its value is in the comparison.
+
+Alt: the controller file, drawn with a dashed border, contains the first four points,
+each with an arrow looping back on itself. A fifth box outside the file —the query
+string format— receives an arrow from the controller and leads out to a grid of nine
+cells, three clients by three lists.
+
+Caption: The first four points stay inside the file. The fifth leaves it, and gets
+rewritten once per cell of the grid.
+*/}
+
+With a single list, four fixed filters and one screen calling it, none of the five has an observable cost and the method above is the proportionate answer to the problem. They become measurable when three conditions appear, and they tend to appear together: the list stops being one, the client stops being one, and the filters stop being fixed because the user composes them from a table header.
+
+## Three costs
+
+### 1. The URL is a public part of the schema
+
+The names travelling in the query string are the names of the document's fields, and a published URL has no version and no deprecation: it exists as long as somebody keeps it. The day `publishedAt` becomes `firstPublishedAt`, neither the compiler nor the tests say anything, and what breaks are links already circulating outside the repository. The cost, however, is not paid on renaming: it is paid in the fact that **you do not rename**, because since there is no way to know who calls with the old name, the migration gets postponed and the name that no longer describes what it stores stays.
+
+### 2. The endpoint grows by multiplication, not by addition
+
+The signature accumulates one parameter per question that can be asked of a field, and the useful questions about a date or a number are several; multiply that by the number of lists, because each one repeats the exercise from scratch. The effect is in the direction of the growth: parameters come in but do not go out, because removing `minCopies` requires proving nobody calls it and that proof cannot be produced against a contract that is not declared anywhere. The method ends up being the sum of every screen that ever called it, including the ones that no longer exist.
+
+### 3. What can be asked for is written nowhere
+
+`sortBy` arrives as text and goes straight into `.sort()`, so the list of fields you can sort by is not decided by the endpoint: it is decided by the schema. And sorting by a field is a way of reading it — with `sortBy=acquisitionPrice` and a few pages you reconstruct the relative order of the acquisition prices of the entire catalogue, without the response ever returning a single price. The second-order effect is where the control sits: that surface widens by editing the **schema**, not the controller, so whoever adds the supplier margin tomorrow is widening what the API exposes with a diff that touches none of the files anybody would look in.
+
+The three costs share one root: what a client may ask for does not exist as data anywhere, but scattered across a method signature, the body of a few `if`s and the way each screen assembles its URL.
+
+## The justification worth discarding
+
+The Criteria pattern is almost always introduced with the same argument: it avoids the explosion of repository methods. In CodelyTV's formulation, which is the reference for this pattern in the Spanish-speaking world, if you have to filter by several fields "we can end up with a repository with one method per field to filter by, plus whatever permutations there may be" — and the criteria solves it while respecting the open/closed principle.
+
+The problem it describes is real and the reasoning is correct. What is worth measuring is its size. A real repository does not accumulate permutations, it accumulates the methods somebody actually needed: `findByTitle`, `findByAuthorAndAvailable`, and little more. The growth is not combinatorial but equal to the number of screens, and four or five similar methods in an interface are awkward to read and cheap to fix — they are, exactly, one of the four local and reversible points from the inventory above.
+
+There is also something that argument does not touch. The method explosion is solved entirely inside the backend: a criteria the use case assembles by hand, with `new BookCriteria({ filters: [...] })`, already removes it, and for that you need neither the DTO, nor validation, nor a list of public fields, nor operators travelling in the URL. An implementation justified only by that stops just short of the half where costs 1 and 3 live, which are the ones that live in no file of the server.
+
+That is why it is worth discarding explicitly rather than merely completing: as long as the method explosion is the reason, the pattern gets implemented up to the edge of the backend and stops there, which is where this article's problem begins. The other argument in circulation —that this way you can change databases— is weaker still here, because the criteria's translator is precisely the cheap part of a migration; the TypeORM section shows it, but as a verifiable consequence and not as a motive.
+
+> **Note:** the portability argument does have a place where it is defended seriously, which is the Repository pattern, and I measured it there in detail: [The Repository pattern in NestJS — a collection that happens to live in a database](/articles/nestjs-repository-pattern). If that discussion interests you, it is all there; for what follows it is enough to know it is not what pays for the criteria.
+
+The question that takes its place is what is available for the whole contract: not for avoiding repeated methods in an interface, but so that a client knows what it may ask for and the server knows what it accepts. There the ecosystem offers more than is usually acknowledged.
+
+## What is already solved
+
+**`nestjs-paginate`** is the option that goes furthest out of the box, and that is worth saying without qualification. The catalogue list, in full, on version 15.0.1:
+
+```ts
+// src/book/book.controller.ts
+@Get()
+async getAll(@Paginate() query: PaginateQuery): Promise<Paginated<Book>> {
+  return paginate(query, this.repository, {
+    relations: ["author"],
+    sortableColumns: ["title", "publishedAt", "copies"],
+    searchableColumns: ["title", "author.name"],
+    filterableColumns: {
+      available: [FilterOperator.EQ],
+      copies: [FilterOperator.GTE, FilterOperator.LTE],
+      "author.name": [FilterOperator.ILIKE],
+    },
+    defaultSortBy: [["publishedAt", "DESC"]],
+    defaultLimit: 20,
+    maxLimit: 100,
+  });
+}
+```
+
+```
+GET /books?filter.available=$eq:true&filter.copies=$gte:3&sortBy=publishedAt:DESC&page=2&limit=20
+```
+
+`sortableColumns` is a required field, not an optional one, and `filterableColumns` declares which operators each column accepts out of a catalogue of eleven —`$eq`, `$gte`, `$in`, `$btw`, `$ilike`, `$null`, `$contains` and company— plus the `$not` suffix and the `$all` / `$any` / `$none` quantifiers. `maxLimit` sets the page ceiling, `searchableColumns` gives you free-text search, there is cursor pagination, and a `filterExpressionMaxComplexity` bounds how many nodes a filter expression may hold so nobody takes the server down with a nested `filter=`. Notice too that `"author.name"` works: names can cross a relation, so even the case this article uses as its acid test is covered. Cost 2 disappears —one parameter— and so does cost 3: what is not declared does not get in.
+
+What it does not solve is the vocabulary, and everything else follows from that. The accepted names are of type `Column<T>`, which is the entity's property path, so `publishedAt` in the URL is `publishedAt` in the class and cost 1 remains untouched. And `paginate()` takes a TypeORM `Repository<T>` or `SelectQueryBuilder<T>` and returns TypeORM entities: the contract is excellent and it is inseparable from the ORM, so it does not exist for anyone using Mongoose or Prisma, and a use case cannot express it without importing TypeORM.
+
+**GraphQL** solves the whole problem by another route — the client declares what it wants and the schema is the contract:
+
+```graphql
+query {
+  books(where: { available: true }, orderBy: { publishedAt: DESC }, first: 20) {
+    title
+    author {
+      name
+    }
+  }
+}
+```
+
+The three costs disappear at once. The price is not the library, it is the transport: HTTP caching, authorisation, rate limiting and observability all move somewhere else, and that makes it an architectural decision rather than a layer you add to a list.
+
+**Passing the whole `req.query` to `find()`** solves the endpoint's growth in zero lines:
+
+```ts
+@Get()
+async getAll(@Query() query: FilterQuery<BookDocument>) {
+  return this.model.find(query);
+}
+```
+
+And it aggravates the other two costs all the way, because the public vocabulary becomes the engine's entire one: `?acquisitionPrice[$gt]=0` filters by a field nobody decided to expose, and the endpoint's surface stops having a limit anyone can state.
+
+**Specification and Query Object**, the classic patterns, solve the composition of conditions inside the domain — in sketch form, `repository.match(new Available().and(new PublishedAfter(2020)))`. That is a real problem and it is the one the previous section discusses, but neither says anything about HTTP transport or about validating what arrives, which here is half the work.
+
+|                                | Cost 1 · URL coupled to the schema                          | Cost 2 · endpoint growth       | Cost 3 · accidental surface                    |
+| ------------------------------ | ----------------------------------------------------------- | ------------------------------ | ---------------------------------------------- |
+| `nestjs-paginate`              | Does not address it: the public name is the entity property | **Solved**: a single parameter | **Solved**: `sortableColumns` is required      |
+| GraphQL                        | **Solved**: the schema is the contract                      | **Solved**                     | **Solved**                                     |
+| The ORM's `where` into `find()` | Aggravates it                                               | **Solved**, without a limit    | Aggravates it: the surface is the whole engine |
+| Specification / Query Object   | Does not address it                                         | **Solved** inside the backend  | Does not address it                            |
+
+> **Note:** the table does not measure ergonomics or time-to-first-endpoint in production, and `nestjs-paginate` wins both by a distance. Nor does it measure the condition that decides before any other: which persistence engine sits underneath. Checked against `nestjs-paginate` 15.0.1 and TypeORM 1.1.0 in August 2026; these APIs change across major versions.
+
+The gap is right there. For anyone not on TypeORM, none of that is available, and for anyone on it, the contract ends up expressed in the ORM's vocabulary. What is missing is a description of the list that names neither the column nor the library.
+
+## The thesis
+
+Fowler defines the _Query Object_ in one line —"an object that represents a database query"— and develops it as an interpreter: a structure of objects able to turn itself into SQL. Both formulations look towards the engine. This article's looks the other way:
+
+> **A criteria is not a query travelling in a URL: it is the description of a list —what is filtered, how it is sorted, which page— written in the vocabulary of the domain and translated twice, once at each border.**
+
+That sentence determines three pieces, and the three of them take up the rest of the article.
+
+**A public field enum per entity.** The contract's vocabulary comes to exist as data in a file, instead of being the residue of a few `if`s. That is where you decide what a client may name, and that decision stops depending on whatever the schema happens to contain: it is the direct answer to costs 1 and 3.
+
+**A domain criteria with no dependencies.** The object describing the list imports neither NestJS, nor the driver, nor the ORM. The use case builds it and hands it to the repository without knowing what is behind, which is what allows the same list to be served from Mongo, from Postgres or from an in-memory double during tests.
+
+**Two translations that know nothing of each other.** The first turns the HTTP request into a criteria and lives in the application layer; the second turns the criteria into the engine's query and lives in infrastructure. Neither knows the other exists, and that is the property the next two sections put to the test: changing engine touches only the second, and changing what a client may ask for touches only the first.
+
+## The implementation
+
+### The domain criteria
+
+This is the whole file, not an extract:
+
+```ts
+// src/shared/domain/criteria/criteria.ts
+type Props = {
+  filters?: CriteriaFilter[];
+  order?: CriteriaOrder | null;
+  page?: number | null;
+  pageSize?: number | null;
+  search?: string | null;
+};
+
+export abstract class Criteria<T extends string> {
+  private _filters: CriteriaFilter[];
+  private _order: CriteriaOrder | null;
+  private _page: number | null;
+  private _pageSize: number | null;
+  private _search: string | null;
+
+  constructor({ filters, order, page, pageSize, search }: Props = {}) {
+    this._filters = filters ?? [];
+    this._order = order ?? null;
+    this._page = page ?? null;
+    this._pageSize = pageSize ?? null;
+    this._search = search ?? null;
+  }
+
+  get filters() {
+    return this._filters;
+  }
+
+  get order() {
+    return this._order;
+  }
+
+  get page() {
+    return this._page;
+  }
+
+  get pageSize() {
+    return this._pageSize;
+  }
+
+  get search() {
+    return this._search;
+  }
+
+  // Replaces the whole list: this is what the mapper does with the request's filters.
+  setFilters(v: CriteriaFilter[]) {
+    this._filters = v;
+  }
+
+  // Accumulates: what the server imposes is added and the request cannot drop it.
+  addFilters(v: CriteriaFilter[]) {
+    this._filters = [...this._filters, ...v];
+  }
+
+  find(field: T): CriteriaFilter[] {
+    return this._filters.filter((f) => f.field === field);
+  }
+}
+```
+
+What matters about this file is what it does not contain: not a decorator, not a NestJS import, not a database driver one. The property is checkable — it compiles with the project's dependencies uninstalled — and everything else depends on it: that the same object can be built in a use case, travel to a Mongo repository, and also to an in-memory double during tests.
+
+Three details carry more weight than they look. The `T extends string` parameter is what ties each criteria to its field list, so `criteria.find("subtitle")` does not compile if that name is not in the entity's enum. `find` returns a list and not a filter because one field can carry two —`publishedAt` after one date and before another is an interval— and whoever translates needs both at once. And the split between `setFilters` and `addFilters` exists because they are two different situations: the client's filters replace the list, whereas the ones the server imposes accumulate, and with different names the difference is visible in the use case instead of having to be remembered.
+
+### The typed filters
+
+A filter is a field, an operator and some values. The base class fixes the first two and leaves the third to each type:
+
+```ts
+// src/shared/domain/criteria/criteria-filter.ts
+export abstract class CriteriaFilter {
+  readonly field: string;
+  readonly operator: CriteriaFilterOperator;
+
+  constructor({ field, operator }: CriteriaFilterProps) {
+    this.field = field;
+    this.operator = operator;
+  }
+
+  abstract hasValues(): boolean;
+}
+```
+
+```ts
+// src/shared/domain/criteria/criteria-number-filter.ts
+export class CriteriaNumberFilter extends CriteriaFilter {
+  readonly values: number[];
+
+  constructor(props: CriteriaFilterProps & { values: number[] }) {
+    super(props);
+
+    this.values = props.values;
+  }
+
+  numbers(): number[] {
+    return this.values;
+  }
+
+  // A filter with no values must not restrict the query.
+  hasValues(): boolean {
+    return this.numbers().length > 0;
+  }
+}
+```
+
+There is a frequent alternative and it is worth saying why it is worse: storing `values: unknown[]` alongside a discriminant field `type: "string" | "number" | "date" | "boolean"`. With that shape, the translator does a `switch` on `type` and the compiler does not check that the values it reads match the branch it is in, so an `as number[]` assertion is needed in every case. With one class per type, `filter instanceof CriteriaNumberFilter` narrows the type and `filter.numbers()` already returns `number[]`. The difference is charged in the infrastructure translator, which is a long `switch` over operators and the spot in the pattern where it is easiest to be wrong in silence.
+
+### The public field enum
+
+This file is the entire surface of what a client may name:
+
+```ts
+// src/book/domain/criteria/book-criteria-field.ts
+export enum BookCriteriaField {
+  ID = "id",
+  TITLE = "title",
+  AUTHOR_NAME = "authorName",
+  PUBLISHED_AT = "publishedAt",
+  COPIES = "copies",
+  AVAILABLE = "available",
+}
+```
+
+```ts
+// src/book/domain/criteria/book-criteria.ts
+export class BookCriteria extends Criteria<BookCriteriaField> {}
+```
+
+`acquisitionPrice` is not there, and that absence is the whole answer to cost 3: the API's surface is no longer decided by the schema. Whoever adds the supplier margin to the document tomorrow widens nothing, because naming it from a URL would mean editing this file, which is exactly where somebody would look for it in a review.
+
+`authorName`, on the other hand, is there, and it is not a document field. The enum is the vocabulary of the list, not of the schema — and that is where cost 1 is settled, because the public name stops being tied to the column name and renaming a property becomes an internal change. That `authorName` lives in another collection is the translator's problem, and the acid test deals with it further down.
+
+The concrete criteria is one line because all of its typing comes from the enum: from here on, any `find` outside those six names stops compiling.
+
+### The request
+
+This is the only file of the pattern carrying decorators, and the concentration is deliberate: it is the border everything you do not control comes through.
+
+```ts
+// src/shared/application/dto/criteria-request.ts
+export class CriteriaFilterRequest {
+  @IsString()
+  @IsNotEmpty()
+  field: string;
+
+  @IsEnum(CriteriaFilterOperator)
+  operator: CriteriaFilterOperator;
+
+  // qs returns a string when the query carries `value=x` once, and an array when it
+  // carries indexes (`value[0]=x`); normalised so it does not depend on how many
+  // values the client happened to send.
+  @IsDefined()
+  @Transform(({ value }) => (Array.isArray(value) ? value : [value]))
+  @IsArray()
+  @IsString({ each: true })
+  value: string[];
+}
+
+export class CriteriaRequest {
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CriteriaFilterRequest)
+  filters?: CriteriaFilterRequest[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CriteriaOrderRequest)
+  order?: CriteriaOrderRequest;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  pageSize?: number;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
+}
+```
+
+Two settings at application start-up decide whether this works, and both fail silently:
+
+```ts
+// src/main.ts
+const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+// Express 5 parses the query with `simple`, which is querystring.parse and does not
+// nest: `order[by]` would arrive as a key literally called "order[by]".
+app.set("query parser", "extended");
+
+// Without `transform`, the DTO's @Type() decorators are not applied and `page` is
+// still a string.
+app.useGlobalPipes(new ValidationPipe({ transform: true }));
+```
+
+The first one is a change in version 5: in `lib/application.js` of Express 5.2.1, the default configuration is `this.set('query parser', 'simple')`, and `extended` is what plugs in `qs`. Without it, a `filters[0][field]=title` does not arrive as a nested object and validation rejects the whole request through no fault of the client.
+
+### The request mapper
+
+This is the first of the two translations. It turns the DTO into a criteria, and along the way it makes three decisions:
+
+```ts
+// src/shared/application/criteria/criteria-request-mapper.ts
+export type CriteriaFilterOption<T extends string> = {
+  field: T;
+  type: CriteriaFilterType;
+};
+
+export abstract class CriteriaRequestMapper<T extends string> {
+  abstract options(): CriteriaFilterOption<T>[];
+
+  execute({ criteria, request }: Props<T>): Criteria<T> {
+    if (request.search !== undefined) {
+      criteria.setSearch(this.mapSearch(request.search));
+    }
+
+    // Pagination is always set, whether the request carries it or not: a criteria
+    // with no pageSize translates into a query with no limit.
+    criteria.setPage(this.mapPage(request.page));
+    criteria.setPageSize(this.mapPageSize(request.pageSize));
+
+    if (request.order !== undefined) {
+      criteria.setOrder(
+        new CriteriaOrder({
+          orderBy: request.order.by,
+          orderType: request.order.type,
+        }),
+      );
+    }
+
+    if (request.filters !== undefined) {
+      const options = this.options();
+      const result: CriteriaFilter[] = [];
+
+      for (const filter of request.filters) {
+        const mapped = this.mapFilter(filter, options);
+
+        if (mapped !== null) {
+          result.push(mapped);
+        }
+      }
+
+      criteria.setFilters(result);
+    }
+
+    return criteria;
+  }
+
+  // The ceiling is what stops an absurd pageSize from ending up an unbounded find().
+  private mapPageSize(value: number | undefined): number {
+    if (value === undefined || !Number.isFinite(value)) {
+      return DEFAULT_PAGE_SIZE;
+    }
+
+    return Math.min(Math.max(Math.trunc(value), 1), MAX_PAGE_SIZE);
+  }
+
+  // What is not in options() is not filtered: there is no field to apply it to.
+  private mapFilter(
+    filter: CriteriaFilterRequest,
+    options: CriteriaFilterOption<T>[],
+  ): CriteriaFilter | null {
+    const option = options.find((o) => o.field === filter.field);
+
+    if (option === undefined) {
+      return null;
+    }
+
+    const props = { field: option.field, operator: filter.operator };
+
+    switch (option.type) {
+      case CriteriaFilterType.STRING:
+        return new CriteriaStringFilter({ ...props, values: filter.value });
+
+      case CriteriaFilterType.NUMBER:
+        return new CriteriaNumberFilter({
+          ...props,
+          values: this.mapNumbers(filter.value),
+        });
+
+      // ...dates and booleans, the same way
+    }
+  }
+}
+```
+
+And the entity's one declares the list, which is the only part that has to be written per list:
+
+```ts
+// src/book/application/criteria/book-criteria-request-mapper.ts
+export class BookCriteriaRequestMapper extends CriteriaRequestMapper<BookCriteriaField> {
+  options(): CriteriaFilterOption<BookCriteriaField>[] {
+    return [
+      { field: BookCriteriaField.ID, type: CriteriaFilterType.STRING },
+      { field: BookCriteriaField.TITLE, type: CriteriaFilterType.STRING },
+      { field: BookCriteriaField.AUTHOR_NAME, type: CriteriaFilterType.STRING },
+      { field: BookCriteriaField.PUBLISHED_AT, type: CriteriaFilterType.DATE },
+      { field: BookCriteriaField.COPIES, type: CriteriaFilterType.NUMBER },
+      { field: BookCriteriaField.AVAILABLE, type: CriteriaFilterType.BOOLEAN },
+    ];
+  }
+}
+```
+
+The first decision is that **the type declared in `options()` is what converts the text**. A query string has no types, so the `"3"` of `copies` becomes the number `3` here, once, and not in every engine translator on its own. The second is the **page ceiling**: always setting `page` and `pageSize`, with `MAX_PAGE_SIZE` as the roof, is what stops a client from turning a list into a dump of the collection.
+
+The third is worth stating with its cost. A filter over an undeclared field is **dropped silently**, it does not return a 400, and that means a typo on the client produces the unfiltered list instead of a visible error — which is worse to debug. The reason for choosing it that way is that a URL saved months ago keeps returning something sensible when a field stops being filterable, instead of breaking. `nestjs-paginate` takes the opposite decision and offers `throwOnInvalidFilter`; both are defensible, and what is not defensible is not having chosen.
+
+> **Note:** the compiler does not check that `options()` covers the whole enum. Declaring it as a `Record<BookCriteriaField, CriteriaFilterType>` instead of a list would enforce that, at the price of losing the table shape. As it stands, an enum field left without a type is an oversight you only notice by filtering.
+
+Here is also the cost of the pattern, in the same place as the benefit: per list you have to write four files —the enum, the one-line criteria, the mapper with its `options()` and the infrastructure map that appears further down— where there used to be five `@Query()`. What you get in exchange is that those four are read in a minute and tell the whole truth about what the endpoint accepts.
+
+### The use case and the port
+
+The domain repository exposes a single method for listing:
+
+```ts
+// src/book/domain/repository/book.repository.ts
+export interface BookRepository {
+  pagination(criteria: BookCriteria): Promise<PaginationRepositoryResult<Book>>;
+}
+```
+
+```ts
+// src/book/application/use-cases/get-all-books.ts
+export class GetAllBooks {
+  constructor(
+    private readonly repository: BookRepository,
+    private readonly criteriaMapper: BookCriteriaRequestMapper,
+  ) {}
+
+  async execute({ request }: Props): Promise<PaginationResponse<BookResponse>> {
+    const criteria = this.criteriaMapper.execute({
+      // the default order is the most recently published; if the request carries
+      // `order`, the mapper overrides it
+      criteria: new BookCriteria({
+        order: new CriteriaOrder({
+          orderBy: BookCriteriaField.PUBLISHED_AT,
+          orderType: CriteriaOrderType.DESC,
+        }),
+      }),
+      request: request,
+    });
+
+    const result = await this.repository.pagination(criteria);
+
+    return PaginationResponseMapper.execute({
+      result: {
+        ...result,
+        items: result.items.map((b) => BookMapper.execute(b)),
+      },
+    });
+  }
+}
+```
+
+The criteria is built in the use case and not in the controller because the default order is a product decision —what the person opening the screen sees first— and not a transport one. The mapper receives it already built and only overrides what the request brings.
+
+That split is also what makes it safe to impose conditions from the server. If the public list must only show available copies, the filter is added **after** the mapper:
+
+```ts
+criteria.addFilters([
+  new CriteriaBooleanFilter({
+    field: BookCriteriaField.AVAILABLE,
+    operator: CriteriaFilterOperator.EQUAL,
+    value: true,
+  }),
+]);
+```
+
+With `setFilters` in that position, a client sending its own `filters` would erase the restriction and the failure would throw nothing: it would be extra rows in the response. That is exactly why the two operations have different names.
+
+### The translation to Mongo
+
+The second translation lives in infrastructure and starts with a map:
+
+```ts
+// src/book/infrastructure/mongo/book-mongo-repository.ts
+private readonly criteriaFields: MongoCriteriaField<BookCriteriaField>[] = [
+  { field: BookCriteriaField.ID, mongo: "_id", canSearch: false },
+  { field: BookCriteriaField.TITLE, mongo: "title", canSearch: true },
+  { field: BookCriteriaField.AUTHOR_NAME, mongo: "author.name", canSearch: true },
+  { field: BookCriteriaField.PUBLISHED_AT, mongo: "publishedAt", canSearch: false },
+  { field: BookCriteriaField.COPIES, mongo: "copies", canSearch: false },
+  { field: BookCriteriaField.AVAILABLE, mongo: "available", canSearch: false },
+];
+```
+
+That map is the alias table point 2 of the inventory described as the patch written too late and only for the field that moved. Here it exists from the start and covers every field, so `id → _id` stops being a special case and becomes one more row. `canSearch` settles the other question: what free-text search looks at. Only the title and the author, which are the two things the table shows — searching by a field you cannot see leaves rows without an apparent explanation.
+
+The query builder walks that map:
+
+```ts
+// src/shared/infrastructure/mongo/mongo-criteria-builder.ts
+execute({ criteria, fields }: Props<T>): CriteriaResult {
+  const result: CriteriaResult = { filter: {}, order: null, skip: null, limit: null };
+
+  // Each field can contribute several fragments —one filter per operator— so they
+  // are flattened: `$and` is a list of conditions, not a list of lists.
+  const fragments = fields.flatMap((f) =>
+    this.filterMapper.execute({ name: f.mongo, filters: criteria.find(f.field) }),
+  );
+
+  if (fragments.length > 0) {
+    result.filter.$and = fragments;
+  }
+
+  if (criteria.search !== null) {
+    const value = criteria.search;
+
+    const search = fields
+      .filter((f) => f.canSearch)
+      // the text comes from a search box and `$regex` interprets it: escape it
+      .map((f) => ({ [f.mongo]: { $regex: escape(value), $options: "i" } }));
+
+    if (search.length > 0) {
+      result.filter.$or = search;
+    }
+  }
+
+  const order = criteria.order;
+
+  if (order !== null && order.hasOrder()) {
+    // sorting resolves against the same map as the filters: you cannot sort by a
+    // field that is not in it
+    const found = fields.find((f) => f.field === order.orderBy);
+
+    if (found) {
+      const direction = order.orderType === CriteriaOrderType.ASC ? 1 : -1;
+
+      result.order = { [found.mongo]: direction };
+    }
+  }
+
+  if (criteria.pageSize !== null) {
+    const page = criteria.page ?? 1;
+
+    result.skip = (page - 1) * criteria.pageSize;
+    result.limit = criteria.pageSize;
+  }
+
+  return result;
+}
+```
+
+That sorting resolves against the same map closes cost 3 from the other end: the enum controls what can be named on the way in, and the map controls what exists on the way out. Sorting by `acquisitionPrice` would require it to be in both files.
+
+The operators are translated separately, one method per filter type:
+
+```ts
+// src/shared/infrastructure/mongo/mongo-criteria-filter-mapper.ts
+private mapNumber(name: string, filter: CriteriaNumberFilter): FilterQuery<unknown> | null {
+  const values = filter.numbers();
+  const [first] = values;
+  const single = values.length === 1;
+
+  switch (filter.operator) {
+    case CriteriaFilterOperator.EQUAL:
+      return { [name]: single ? first : { $in: values } };
+
+    case CriteriaFilterOperator.NOT_EQUAL:
+      return { [name]: single ? { $ne: first } : { $nin: values } };
+
+    // Comparison operators are binary: with several values only the first one
+    // means anything.
+    case CriteriaFilterOperator.GTE:
+      return { [name]: { $gte: first } };
+
+    default:
+      return null;
+  }
+}
+```
+
+The `default` returning `null` is what makes an operator that is meaningless for the type —`CONTAINS` over a boolean— not filter at all instead of breaking the query. And it is worth looking at what this file **returns**: fragments and loose values, not an assembled query. The builder hands over `filter`, `order`, `skip` and `limit` separately, and who uses them and how is the repository's decision. That choice looks like a matter of style and it is the one that decides whether the pattern survives the acid test.
+
+### The page and the total come out of the same filter
+
+```ts
+async pagination(criteria: BookCriteria): Promise<PaginationRepositoryResult<Book>> {
+  const result = this.criteriaBuilder.execute({
+    criteria: criteria,
+    fields: this.criteriaFields,
+  });
+
+  const query = this.model.find(result.filter);
+
+  if (result.order !== null) {
+    query.sort(result.order);
+  }
+
+  if (result.skip !== null) {
+    query.skip(result.skip);
+  }
+
+  if (result.limit !== null) {
+    query.limit(result.limit);
+  }
+
+  // Both queries come out of the same filter and travel in parallel; the count
+  // carries no skip or limit, because those bound the page and not the total.
+  const [list, count] = await Promise.all([
+    query,
+    this.model.countDocuments(result.filter),
+  ]);
+
+  return {
+    items: list.map((i) => BookMongoMapper.execute(i)),
+    count: count,
+    pageSize: criteria.pageSize,
+  };
+}
+```
+
+It is the only decision from the original list the pattern keeps as it was, and it is worth saying why it matters: if the count were built on its own, the total and the page could answer to different filters and the pagination would lie without failing. The symptom is an empty last page, or a result count that does not match what you see, and neither of those shows up in a log.
+
+### Point by point
+
+Of the five in the inventory, four are settled. The operator no longer lives in the body of the method: it travels explicitly in the URL and an `@IsEnum` validates it. The public name stopped being the column name, which is now a cell in the infrastructure map. The endpoint's signature is `@Query() request: CriteriaRequest` and it does not change when a filter is added, so the growth by multiplication disappears. And what can be filtered and sorted is written in two files that are read in a minute, instead of being inferred from a few branches. The fifth —the format shared across lists and clients— is settled as soon as there is a second list, because of everything written in this section only the catalogue's four files are its own: the rest is already in place.
+
+There is one row of the map still lying. `authorName` points at `author.name`, and a `books` document has no `author.name` property: it stores a reference. With the `find()` above, that filter does not fail — it simply finds nothing, which is the worse of the two options.
+
+## The acid test: the field that does not live in the collection
+
+The table shows the author's name in a column, so it has to be filterable and sortable just like the title. The data is in `authors`, on the other side of a reference, and the list is paginated: the page and the total have to come out of the same set of rows.
+
+The way out people try first is `populate`, and it fails in a way worth looking at closely:
+
+```ts
+this.model
+  .find(result.filter)
+  .populate({ path: "author", match: { name: "Herbert" } });
+```
+
+`populate` solves reading, not filtering. The `match` applies to the populated document, not to the book, so books by other authors keep coming back — with `author: null` instead of disappearing. `countDocuments` counts those too, and the result is a table with holes and a total that does not correspond to what is shown.
+
+The second way out does filter, and it is the one that installs the real problem:
+
+```ts
+const filters = criteria.find(BookCriteriaField.AUTHOR_NAME);
+
+if (filters.length > 0) {
+  const ids = await this.authorModel.find({ name: /* ... */ }).distinct("_id");
+
+  result.filter.author = { $in: ids };
+}
+```
+
+It works, and in exchange the repository goes back to having a branch per special field. It still cannot sort by the author's name, because `$sort` operates over the books collection and there is no name there. And the knowledge that two collections exist, which the pattern had shown out the door, comes back in through an `if` — with the aggravating factor that every derived field added later will bring its own.
+
+The good way out depends on a decision already made: the builder does not return a query, it returns `filter`, `order`, `skip` and `limit` separately. Who uses them and in what order is the repository's business:
+
+```ts
+// src/book/infrastructure/mongo/book-mongo-repository.ts
+async pagination(criteria: BookCriteria): Promise<PaginationRepositoryResult<Book>> {
+  const result = this.criteriaBuilder.execute({
+    criteria: criteria,
+    fields: this.criteriaFields,
+  });
+
+  // The author travels on every row, so the lookup goes BEFORE the match: that is
+  // the only way to filter and sort by their name like any other column.
+  //
+  // The $unwind does NOT preserve empties: a book with no author is not a row with
+  // a hole, it is a broken reference. It does not show up here.
+  const join: PipelineStage[] = [
+    {
+      $lookup: {
+        from: this.authorModel.collection.name,
+        localField: "author",
+        foreignField: "_id",
+        as: "author",
+      },
+    },
+    { $unwind: "$author" },
+    { $match: result.filter },
+  ];
+
+  const page: PipelineStage[] = [...join];
+
+  if (result.order !== null) {
+    page.push({ $sort: result.order });
+  }
+
+  if (result.skip !== null) {
+    page.push({ $skip: result.skip });
+  }
+
+  if (result.limit !== null) {
+    page.push({ $limit: result.limit });
+  }
+
+  const [list, counted] = await Promise.all([
+    this.model.aggregate<MongoBook>(page),
+    this.model.aggregate<{ count: number }>([...join, { $count: "count" }]),
+  ]);
+
+  return {
+    items: list.map((i) => BookMongoMapper.execute(i)),
+    count: counted[0]?.count ?? 0,
+    pageSize: criteria.pageSize,
+  };
+}
+```
+
+The `$lookup` goes before the `$match` because `author.name` has to exist in the document by the time the filter is evaluated, and that ordering of stages is exactly what a builder returning an assembled query could not decide. It would have to know the collections in order to place the `$lookup` —and then the translator would know about relations, which is the contamination we were avoiding— or it would have to be bypassed for this field, which is going back to the `if`. Returning pieces was not a style preference: it was what left this decision to whoever does know the engine.
+
+The `$unwind` without `preserveNullAndEmptyArrays` is the other decision, and it is a business one: a book whose author no longer exists does not appear in the catalogue. If the business said otherwise, you change that stage and nothing else.
+
+{/*
+FIGURE 2 — the acid test, the obvious/solution pair.
+Source: diagrams/09-prueba-de-fuego.excalidraw · pending.
+Two panels with the SAME framing and a single visible difference.
+
+Alt: on the left, the books collection with an `if` hanging off it that fires a second
+query against authors and returns a list of ids. On the right, the same collection with
+three stages in a row —lookup, unwind, match— and the same block of pieces (filter,
+order, skip, limit) feeding into the third.
+
+Caption: The difference is not in what gets queried, but in who decides the order of
+the stages.
+*/}
+
+What this section had to demonstrate is what did **not** change. `authorName` filters and sorts like any other column, and getting there touched neither the enum, nor the criteria, nor the DTO, nor the request mapper, nor the use case, nor the URL the client writes. The `find` became an `aggregate` inside one infrastructure file, and the contract never noticed — which is the property the thesis promised and the one that decides whether the pattern holds up by the third list. The row of the map that used to find nothing now tells the truth, and getting there it never stopped being a row.
+
+## The same criteria against TypeORM
+
+Everything so far is written against Mongo, and the only piece that knows there is a Mongo underneath is the builder. Changing engine means writing another one:
+
+```ts
+// src/shared/infrastructure/typeorm/typeorm-criteria-builder.ts
+export type TypeOrmCriteriaField<T extends string> = {
+  field: T;
+  column: string;
+  canSearch: boolean;
+};
+
+export class TypeOrmCriteriaBuilder<T extends string, E> {
+  execute({ criteria, fields }: Props<T>): TypeOrmCriteriaResult<E> {
+    const where: FindOptionsWhere<E> = {};
+
+    for (const f of fields) {
+      const operators = criteria
+        .find(f.field)
+        .filter((filter) => filter.hasValues())
+        .map((filter) => this.operatorMapper.execute(filter));
+
+      if (operators.length === 0) {
+        continue;
+      }
+
+      // Two filters over the same field are an interval, and TypeORM combines them
+      // with And(): the equivalent of the two `$and` fragments in Mongo.
+      const condition =
+        operators.length === 1 ? operators[0] : And(...operators);
+
+      // `author.name` is nested as `{ author: { name: ... } }`: TypeORM does not
+      // take a dotted path as a key, so the column is split on the dot.
+      this.assign(where, f.column.split("."), condition);
+    }
+
+    const pageSize = criteria.pageSize;
+
+    return {
+      where: where,
+      order: this.mapOrder(criteria, fields),
+      skip:
+        pageSize === null ? undefined : ((criteria.page ?? 1) - 1) * pageSize,
+      take: pageSize ?? undefined,
+    };
+  }
+}
+```
+
+The operator translator is the same `switch` with a different vocabulary:
+
+```ts
+private map(filter: CriteriaNumberFilter): FindOperator<number> | null {
+  const values = filter.numbers();
+  const [first] = values;
+  const single = values.length === 1;
+
+  switch (filter.operator) {
+    case CriteriaFilterOperator.EQUAL:
+      return single ? Equal(first) : In(values);
+
+    case CriteriaFilterOperator.NOT_EQUAL:
+      return single ? Not(Equal(first)) : Not(In(values));
+
+    case CriteriaFilterOperator.GTE:
+      return MoreThanOrEqual(first);
+
+    case CriteriaFilterOperator.LTE:
+      return LessThanOrEqual(first);
+
+    default:
+      return null;
+  }
+}
+```
+
+And the repository ends up shorter than its Mongo twin, because `findAndCount` returns the page and the total in a single call and against the same `where` — the rule that in Mongo had to be held up by hand is imposed here by the method's signature:
+
+```ts
+async pagination(criteria: BookCriteria): Promise<PaginationRepositoryResult<Book>> {
+  const result = this.criteriaBuilder.execute({
+    criteria: criteria,
+    fields: this.criteriaFields,
+  });
+
+  const [list, count] = await this.repository.findAndCount({
+    relations: { author: true },
+    where: result.where,
+    order: result.order,
+    skip: result.skip,
+    take: result.take,
+  });
+
+  return {
+    items: list.map((i) => BookTypeOrmMapper.execute(i)),
+    count: count,
+    pageSize: criteria.pageSize,
+  };
+}
+```
+
+The field that does not live in the table —the one that cost a whole section in Mongo— is here the same map row with a dot, `authorName → "author.name"`, and the `JOIN` is put in by the ORM when it sees the relation in the `where`. When the query needs more control, the alternative is to push the same pieces onto a `SelectQueryBuilder` with an explicit `leftJoin`, which is the literal equivalent of the `$lookup`; what does not change in either case is where the pieces come from.
+
+> **Note:** `ILike` does not mean the same thing on every engine. In TypeORM 1.1.0 the condition is emitted as native `ILIKE` on PostgreSQL and CockroachDB, and on any other driver it is translated to `UPPER(column) LIKE UPPER(parameter)`. It behaves the same and performs differently: the second form does not take advantage of an index on the column, you need a functional one on the expression. It is the kind of difference the criteria cannot hide, because it is not about vocabulary but about the engine.
+
+With Prisma the exercise is the same with a third vocabulary: the builder would return `where`, `orderBy`, `skip` and `take`, and the repository would pass them to `findMany` alongside a `count` with the same `where`.
+
+What has to be written to port a whole list, then, is one builder and one field map; everything else is the same pieces as before, untouched. This is what the section on justifications promised to show as a consequence and not as a motive — portability exists and is checkable, but it is still not the reason you pay for the pattern, because changing database engine is rare and having three lists and two clients is normal.
+
+## The other end, briefly
+
+The client builds the same object and hands it over as the request's parameters:
+
+```ts
+// src/modules/criteria/criteria-request.ts
+params(): CriteriaRequestDTO {
+  const result: CriteriaRequestDTO = {};
+
+  // A filter with no values restricts nothing: it does not travel.
+  const filters = this.filters.filter((f) => f.hasValues());
+
+  if (filters.length > 0) {
+    result.filters = filters.map((f) => f.dto());
+  }
+
+  if (this.order !== undefined && this.order.hasOrder()) {
+    result.order = this.order.dto();
+  }
+
+  // An empty search box is not a search for "".
+  if (this.search !== undefined && this.search.trim() !== "") {
+    result.search = this.search;
+  }
+
+  return result;
+}
+```
+
+And the request is an ordinary call, with nothing around it:
+
+```ts
+import axios from "axios";
+
+const { data } = await axios.get<PaginationResponse<BookResponse>>("/books", {
+  params: criteria.params(),
+  // without this, cancelling a search while typing is decorative
+  signal: controller?.signal,
+});
+```
+
+That `params` is what produces the URL from the beginning of the article, brackets and all: nobody writes it by hand. There is no custom serialiser on either side, because axios already writes nested objects in bracket notation and `qs` reconstructs them on the other end, which is exactly what the `extended` query parser from start-up enables. The two rules in the previous snippet exist because they affect the URL and not the server: what does not restrict does not travel, and a URL without noise is the difference between being able to share it and not.
+
+It is worth saying where the type safety ends. The enum is the entire surface of what a client may name, but that guarantee lives on the server: what travels in the URL is text, and on the client `field` is a `string` again. That both lists say the same thing is a team convention, not a contract anybody checks — and when a field stops being filterable, the symptom is the one already described: the list arrives unfiltered. Closing it completely requires generating the names from a shared source, or publishing the enum in a shared package, and both tie the client's deployment to the server's.
+
+> **Note:** how a table keeps that object in sync with the browser URL, with the column state and with the cancellation of in-flight requests is material for an article of its own.
+
+## Two honest caveats, and what this is not
+
+**The pattern makes exposing a filter cheap, not serving it.** Adding a filterable field costs one line in the enum and one in the map, and that ease is precisely the risk: six filterable fields in any combination are far more distinct queries than the team is ever going to look at in an execution plan. No index is inferred from the criteria, so it is worth deciding which combinations to offer knowing which ones are indexed, instead of finding out when the table grows.
+
+**Pagination by `skip` degrades with the offset.** The engine walks what it skips, so page 500 costs more than page 2. With the `MAX_PAGE_SIZE` ceiling and admin-panel lists it is not observable, and in a long feed the right answer is a cursor — which the pattern accommodates without changing shape. The criteria would carry a cursor instead of a page, the translator would turn it into one more condition over the last item seen, and the enum, the filters and the two translations stay where they are. What does change is a restriction in the contract: the order has to include a unique column as a tie-breaker, so you can no longer sort by any field of the enum.
+
+And it is worth saying what this is not: **a query engine**. There is no `OR` between different filters, no groups, no parentheses — every filter is combined with `AND` and the `OR` is reserved for free-text search. Anyone who needs to compose expressions needs GraphQL or a language of their own, and it is better to know that before writing the first file than after the third list.
+
+## Who this is for, and who it is not for
+
+Starting with the no: a backend with one list, three or four fixed filters and a single screen consuming it. There this is some fifteen shared files plus four per list to replace five `@Query()` that work, and none of the three costs has an observable symptom yet. The right answer in that project is the simple one, and adopting the pattern up front is paying for a problem that may never arrive.
+
+Four conditions flip the balance, and they rarely turn up alone: three or more paginated lists; more than one client consuming them —an internal panel, an app, somebody integrating over the API—; filters the user **composes** from a table header instead of picking off a fixed list; and lists that get shared by URL. With two of them present, the cost is amortised by the second list, because the fifteen shared files are written once and from then on each list is four, one of which is a single line.
+
+The practical rule fits in one line: if what a client may ask for still fits in a method signature, leave it there; the moment it stops fitting, the place where that list lives is a file, not a method.
+
+## The code
+
+The runnable project is at [hgomezrobaina/nestjs-criteria-pattern](https://github.com/hgomezrobaina/nestjs-criteria-pattern), with the library catalogue running on Mongo: `docker compose up -d && npm install && npm run seed && npm run dev`.
+
+What is worth looking at is not that it starts, but its suite: **26 tests in 19 milliseconds, with no database**. Inside it is checked what this article claims — that a filter over an undeclared field is dropped, that `pageSize` has a ceiling, that a filter imposed by the server survives a `filters` sent by the client, that `id` is translated to `_id` and `authorName` to `author.name`, that the search term is escaped before it reaches a `$regex`, and that the same criteria produces TypeORM's nested `where` and Mongo's pieces. None of those claims needs a container to be verified, because none of them is about the database: they are about what the contract decides before reaching it.
+
+## Let's talk
+
+Questions, feedback or a different take? I would love to read you. You can find me here:
+
+- **GitHub** — [hgomezrobaina](https://github.com/hgomezrobaina)
+- **LinkedIn** — [Héctor Gómez Robaina](https://www.linkedin.com/in/hector-gomez-robaina)
+- **X** — [@hgomezrobaina](https://x.com/hgomezrobaina)

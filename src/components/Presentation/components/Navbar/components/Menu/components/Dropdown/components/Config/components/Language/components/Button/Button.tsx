@@ -2,9 +2,9 @@ import { clsx } from 'clsx'
 import Image from 'next/image'
 import Link from 'next/link'
 import { AppImage } from '../../../../../../../../../../../../../../modules/app/interfaces/image'
-import { LANGUAGES, LANGUAGE_ROUTES } from '../../../../../../../../../../../../../../modules/language/constants'
-import { useLanguage } from '../../../../../../../../../../../../../../modules/language/hooks'
-import { savePreferredLanguage } from '../../../../../../../../../../../../../../modules/language/utils'
+import { LANGUAGES, LANGUAGE_ROUTES } from '../../../../../../../../../../../../../../modules/language/constants/LANGUAGES'
+import useLanguage from '../../../../../../../../../../../../../../modules/language/hooks/useLanguage'
+import { savePreferredLanguage } from '../../../../../../../../../../../../../../modules/language/utils/preferredLanguage'
 
 interface Props {
   language: LANGUAGES

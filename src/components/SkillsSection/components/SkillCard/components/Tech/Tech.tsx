@@ -1,5 +1,5 @@
 import Image from 'next/image'
-import { ArrowRight } from '../../../../../../modules/icon/components'
+import ArrowRight from '../../../../../../modules/icon/components/ArrowRight'
 
 interface Props {
   tech: string

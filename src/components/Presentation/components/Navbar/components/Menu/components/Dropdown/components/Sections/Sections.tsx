@@ -1,11 +1,12 @@
-import { useSections } from '../../../../../../../../../../modules/app/hooks'
+import { SECTIONS } from '../../../../../../../../../../modules/app/constants/SECTIONS'
+import useLanguage from '../../../../../../../../../../modules/language/hooks/useLanguage'
 
 interface Props {
   handleChangeOpenMenu: () => void
 }
 
 export default function Sections({ handleChangeOpenMenu }: Props) {
-  const { SECTIONS } = useSections()
+  const { language } = useLanguage()
 
   return (
     <div className="flex flex-col gap-5 items-center">
@@ -15,7 +16,7 @@ export default function Sections({ handleChangeOpenMenu }: Props) {
             <span className="font-fontCode text-sm text-secondColor dark:text-primaryColor">
               {String(index + 1).padStart(2, '0')}.
             </span>
-            {section.navLabel}
+            {section.navLabel[language]}
           </p>
         </a>
       ))}

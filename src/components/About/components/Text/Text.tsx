@@ -1,4 +1,5 @@
-import { Content, Links } from './components'
+import Content from './components/Content/Content'
+import Links from './components/Links/Links'
 
 export default function Text() {
   return (

@@ -1,5 +1,5 @@
-import { Menu as MenuIcon } from '../../../../../../modules/icon/components'
-import { Dropdowm } from './components'
+import MenuIcon from '../../../../../../modules/icon/components/Menu'
+import Dropdowm from './components/Dropdown/Dropdowm'
 
 interface Props {
   handleChangeOpenMenu: () => void

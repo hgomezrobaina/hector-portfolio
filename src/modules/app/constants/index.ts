@@ -1,5 +1,0 @@
-import { APP_IMAGES } from './APP_IMAGES'
-import { SITE_ICONS, LANGUAGE_ALTERNATES } from './METADATA'
-import { SITE_URL } from './SITE'
-
-export { APP_IMAGES, SITE_URL, SITE_ICONS, LANGUAGE_ALTERNATES }

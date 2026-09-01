@@ -1,6 +1,6 @@
-import { APP_IMAGES } from '../../../../../../../../../../../../modules/app/constants'
-import { LANGUAGES } from '../../../../../../../../../../../../modules/language/constants'
-import { Button } from './components'
+import { APP_IMAGES } from '../../../../../../../../../../../../modules/app/constants/APP_IMAGES'
+import { LANGUAGES } from '../../../../../../../../../../../../modules/language/constants/LANGUAGES'
+import Button from './components/Button/Button'
 
 export default function Language() {
   return (

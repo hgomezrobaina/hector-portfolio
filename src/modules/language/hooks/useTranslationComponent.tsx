@@ -1,6 +1,6 @@
 import { useContext } from 'react'
 import { LanguageContext } from '../context/LanguageContext'
-import { InputTranslation, LanguageConfig, TranslationResult } from '../interfaces'
+import { InputTranslation, LanguageConfig, TranslationResult } from '../interfaces/translation'
 
 export default function useTranslationComponent<T>(input: InputTranslation<T, React.ReactNode>) {
   const { language } = useContext(LanguageContext)

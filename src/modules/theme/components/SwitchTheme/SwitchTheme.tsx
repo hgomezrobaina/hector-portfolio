@@ -1,8 +1,9 @@
-import { THEME } from '../../constants'
+import { THEME } from '../../constants/THEME'
 import { motion } from 'framer-motion'
 import { clsx } from 'clsx'
-import { Dark, Light } from '../../../icon/components'
-import { useTheme } from '../../hooks'
+import Dark from '../../../icon/components/Dark'
+import Light from '../../../icon/components/Light'
+import useTheme from '../../hooks/useTheme'
 
 export default function SwitchTheme() {
   const { theme, handleChangeTheme } = useTheme()

@@ -11,7 +11,7 @@ interface Props {
   madeWith: string[]
   description: string
   externalLink: string
-  githubLink: string
+  githubLink: string | null
   title: string
   index: number
 }

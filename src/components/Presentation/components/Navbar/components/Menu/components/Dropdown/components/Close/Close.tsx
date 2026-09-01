@@ -1,4 +1,4 @@
-import { X } from '../../../../../../../../../../modules/icon/components'
+import X from '../../../../../../../../../../modules/icon/components/X'
 
 interface Props {
   handleChangeOpenMenu: () => void

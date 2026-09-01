@@ -14,3 +14,32 @@ export const LANGUAGE_ALTERNATES = {
   es: '/es',
   'x-default': '/',
 }
+
+export const SITE_NAME = 'Héctor Gómez | Portfolio'
+export const AUTHOR_NAME = 'Héctor Gómez'
+export const TWITTER_HANDLE = '@hgomezrobaina'
+
+export const SITE_KEYWORDS = {
+  en: [
+    'Héctor Gómez',
+    'Fullstack Developer',
+    'React Developer',
+    'Next.js Developer',
+    'Node.js Developer',
+    'TypeScript',
+    'JavaScript',
+    'Software Engineer portfolio',
+    'Web developer portfolio',
+  ],
+  es: [
+    'Héctor Gómez',
+    'Desarrollador Fullstack',
+    'Desarrollador React',
+    'Desarrollador Next.js',
+    'Desarrollador Node.js',
+    'TypeScript',
+    'JavaScript',
+    'Portafolio de programador',
+    'Portafolio desarrollador web',
+  ],
+}

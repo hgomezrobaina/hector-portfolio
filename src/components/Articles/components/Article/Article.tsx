@@ -1,7 +1,13 @@
 import { clsx } from 'clsx'
-import { Article as IArticle } from '../../interfaces'
-import { Button, Image } from './components'
+import Link from 'next/link'
+import { Article as IArticle } from '../../domain/article'
+import useLanguage from '../../../../modules/language/hooks/useLanguage'
+import { getArticlePath } from '../../utils/get-article'
+import Button from './components/Button/Button'
+import Image from './components/Image/Image'
 import { Variants, motion } from 'framer-motion'
+
+const MotionLink = motion.create(Link)
 
 interface Props {
   article: IArticle
@@ -9,6 +15,8 @@ interface Props {
 }
 
 export default function Article({ article, left }: Props) {
+  const { language } = useLanguage()
+
   const CARD_CLASS = clsx(
     'group flex md:flex-row flex-col items-stretch md:gap-9 gap-6',
     { 'md:flex-row-reverse': !left },
@@ -41,29 +49,27 @@ export default function Article({ article, left }: Props) {
   }
 
   return (
-    <motion.a
-      href={article.link}
-      target="_blank"
-      rel="noreferrer"
+    <MotionLink
+      href={getArticlePath(language, article.slug)}
       className={CARD_CLASS}
       initial="offscreen"
       whileInView="onscreen"
       viewport={{ once: true }}
       variants={variants}
     >
-      <Image image={article.image} title={article.title} />
+      <Image image={article.image} title={article.title[language]} />
 
       <div className="flex flex-col flex-1">
         <h3 className="mb-2.5 font-fontCodeBold xl:text-2xl text-xl transition-colors duration-300 group-hover:text-blue-6 dark:group-hover:text-blue-4">
-          {article.title}
+          {article.title[language]}
         </h3>
 
         <p className="mb-3 leading-7 xl:text-base text-base dark:text-scale-12 text-left text-scale-8">
-          {article.description}
+          {article.description[language]}
         </p>
 
         <Button />
       </div>
-    </motion.a>
+    </MotionLink>
   )
 }

@@ -1,5 +1,5 @@
-import { LANGUAGES } from '../../../modules/language/constants'
-import { useLanguage } from '../../../modules/language/hooks'
+import { LANGUAGES } from '../../../modules/language/constants/LANGUAGES'
+import useLanguage from '../../../modules/language/hooks/useLanguage'
 
 export default function usePresentation() {
   const { language } = useLanguage()

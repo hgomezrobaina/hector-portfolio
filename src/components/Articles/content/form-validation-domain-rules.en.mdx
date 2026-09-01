@@ -1,0 +1,344 @@
+We've all been here. A new form shows up, you install React Hook Form, add Zod or Yup, and in ten minutes you have something that "works." The problem doesn't surface that day. It surfaces three months later, when the same VIN you validate in the _create car_ form also has to be validated in _edit_, in _import from Excel_, and it turns out the rule —"17 characters, the last 5 numeric"— is written three times, each one slightly different, and none of them lives in a place you can point to and say _"here is what a valid VIN is."_
+
+A typical form with a library looks roughly like this:
+
+```tsx
+const schema = z.object({
+  vin: z.string().length(17, "The VIN must be 17 characters"),
+  miles: z.number().min(0, "Miles cannot be negative"),
+  // ...and 8 more fields
+});
+
+const {
+  register,
+  handleSubmit,
+  watch,
+  formState: { errors },
+} = useForm({
+  resolver: zodResolver(schema),
+});
+```
+
+It works. But if you stop to look at it, you're paying three costs that almost never get named:
+
+**1. Clean code dissolves.** The business rule ends up scattered across the `schema`, the `resolver`, the `register` calls, the `Controller`s, and the JSX. The knowledge —_what makes a car valid_— has no home. It's wired into the UI. And what's wired into the UI doesn't get reused: it gets copied.
+
+**2. Performance and coupling are paid silently.** These libraries live on subscriptions: `watch`, re-renders on every keystroke, internal state to keep in sync. For a contact form, who cares. For a screen with 15 fields, sub-forms, and cross-field validation, your component is tied to the library's lifecycle —not yours— and you start fighting it instead of using it.
+
+**3. Developer convenience is a trap.** It's wonderfully convenient _at first_. But that same rule: how do you test it without mounting a component? How do you move it to the backend? How do you translate it into two languages without polluting the schema? Everything the library gave you for free, it charges you for the day you need to step outside its mold.
+
+None of these problems are Formik's or React Hook Form's fault. They're excellent at what they do: **wiring inputs to state**. The problem is that we delegate to them something that was never their job —_deciding what is valid_— and that's where the domain leaks out into the presentation layer.
+
+## The thesis
+
+The whole approach I'm about to show comes from a single idea:
+
+> **An invalid field is a domain rule, not a UI state.**
+
+If you accept that, the consequences are direct. Validation doesn't belong to the component: it belongs to the domain, just like your models and your services. A rule stops being a line in a schema and becomes a _nameable, testable unit_. The component goes back to its only job —render and trigger— and asks the domain "is this valid?", the same way it asks a service "did this save?".
+
+It's not more code for the sake of it. It's moving the business knowledge to the place where it can be reused, tested without React, translated effortlessly, and —the day it's needed— moved to the backend without rewriting a single line of logic.
+
+In what follows I'll take apart the system I use in my projects: a four-line contract, rules as classes, composition without weird inheritance, and how all of it is consumed from a component with a plain `useState`.
+
+## The minimal contract: a rule and an error
+
+Before writing a single validation, we need to define two things: **what a rule is** and **what an error is**. Both are pretty small.
+
+A rule is any object that knows how to answer _"what's wrong here?"_:
+
+```ts
+export interface ValidationRule {
+  validate(): AppException[];
+}
+```
+
+That's it. No state, no React, no generics. A `ValidationRule` receives whatever it needs through its constructor and returns a **list of errors**. If the list is empty, the field is valid. The detail that seems minor but isn't: it returns an _array_, not a `boolean` or a `string`. A field can fail for several reasons at once, and whoever validates only reports —it doesn't decide how things get shown.
+
+And what is an error? Not a loose string:
+
+```ts
+export class AppException {
+  readonly id: string;
+  readonly message: TranslationConfig;
+
+  constructor({ id, message }: { id: string; message: TranslationConfig }) {
+    this.id = id;
+    this.message = message;
+  }
+}
+```
+
+Two fields, two decisions.
+
+The `message` is a `TranslationConfig` (`{ es, en }`): **the error is born already translated**, deep in the domain, instead of being a string someone has to remember to run through i18n in the UI layer. Not every system needs this, but if your app is multi-language it saves you from maintaining a key map kept in sync with every rule. I'll leave it here and move on, because the really interesting piece is the other one.
+
+The `id` is what turns this error into something **genuinely testable**. A stable, language-independent `id` —`"car.vin.empty"`, `"car.miles.negative"`— gives you an identifier that doesn't change even if you rewrite the text or switch languages. And that unlocks two things:
+
+- **In E2E tests**, you can render that `id` as a `data-error-id` in the DOM and assert _"the empty-VIN error appeared"_ without coupling the test to the exact message text (which changes, gets translated, gets tweaked). The test verifies the _rule_, not the _copy_.
+- **In unit tests**, you can go a step further and make each error its own subclass of `AppException`:
+
+  ```ts
+  export class VinEmptyException extends AppException {
+    constructor() {
+      super({
+        id: "car.vin.empty",
+        message: {
+          es: "El VIN no puede estar vacío",
+          en: "The VIN cannot be empty",
+        },
+      });
+    }
+  }
+  ```
+
+  And then the assertion is about types, not strings:
+
+  ```ts
+  const errors = new CarVinValidator("").validate();
+
+  expect(errors.some((e) => e instanceof VinEmptyException)).toBe(true);
+  // or, if you prefer the id:
+  expect(errors[0].id).toBe("car.vin.empty");
+  ```
+
+  Compare that with the fragile alternative we've all written: `expect(errors[0].message).toContain("empty")`. That assertion breaks the day someone fixes a typo. The one above survives any copy change, in any language.
+
+With that, the system's full contract is two pieces:
+
+- **`ValidationRule`** — "I know how to decide whether something is valid and, if not, I enumerate exactly what failed."
+- **`AppException`** — "I'm an error with a stable identity (`id`) and, while we're at it, I know how to say myself in every language the app speaks."
+
+Everything that follows —rules, composition, triggering from the component— rests on these two. There's no more "framework" to learn: an interface and a data class. The day someone new joins the project, this is _all_ they have to read to understand how we validate.
+
+> **Design note:** the fact that `validate()` takes no arguments is intentional. The value comes in through the **constructor**, not the method. That makes each rule a self-contained object —you build it with its data and it's ready to be asked— and it's what lets you drop them all into a list and run them in a loop without the orchestrator knowing anything about any of them.
+
+## A rule = a class
+
+This is the central idea, and now that we have the contract it fits in very little. A business rule is a class that implements `ValidationRule`, puts all its logic inside, and returns whatever errors it finds.
+
+Let's take one with substance. A VIN (a car's chassis number) is valid if it's not empty, has exactly 17 characters, and ends with at least 5 numbers. Three different ways to fail, one single class:
+
+```ts
+export class CarVinValidator implements ValidationRule {
+  constructor(private readonly value: string) {}
+
+  validate(): AppException[] {
+    const value = this.value.trim();
+
+    if (value.length === 0) {
+      return [
+        new AppException({
+          id: "car.vin.empty",
+          message: {
+            es: "El VIN no puede estar vacío",
+            en: "The VIN cannot be empty",
+          },
+        }),
+      ];
+    }
+
+    if (value.length !== 17) {
+      return [
+        new AppException({
+          id: "car.vin.length",
+          message: {
+            es: "El VIN debe tener 17 caracteres",
+            en: "The VIN must be 17 characters",
+          },
+        }),
+      ];
+    }
+
+    const end = value.slice(-5);
+
+    if (end.split("").some((c) => isNaN(Number(c)))) {
+      return [
+        new AppException({
+          id: "car.vin.end-numbers",
+          message: {
+            es: "El VIN debe terminar con al menos 5 números",
+            en: "The VIN must end with at least 5 numbers",
+          },
+        }),
+      ];
+    }
+
+    return [];
+  }
+}
+```
+
+That's all. It reads top to bottom like the business definition: _empty → error; not 17 → error; doesn't end in numbers → error; otherwise valid_. The knowledge of "what makes a VIN valid" now has a place with a first and last name —`CarVinValidator`— instead of being diluted across a schema, a resolver, and the JSX.
+
+And look at what you got almost for free compared to the library version:
+
+**It tests with nothing around it.** It's a TypeScript class with no dependencies on React or the DOM. You build it with a value and ask it:
+
+```ts
+const errors = new CarVinValidator("123").validate();
+
+expect(errors[0].id).toBe("car.vin.length"); // 3 characters → fails on length
+```
+
+And here's where the `id` from the previous section pays for itself: the test verifies the **rule** (`car.vin.length`), not the **text** of the message. You can rewrite the copy, fix a typo, or add a third language, and the test stays green. Compare that with `expect(errors[0].message).toContain("17")`, which breaks on the first rewording.
+
+**It lives in the domain, not the UI.** `CarVinValidator` imports nothing from the front end. The day you want to test it, reuse it on another screen, or even share the logic with the backend, you take the whole class with you without dragging along a presentation dependency.
+
+> If a rule had genuinely heavy logic and you wanted to share it as-is with the backend, you could extract that part into a separate pure class and leave this validator as a thin adapter that only attaches the messages. It's an optimization for specific cases —not the normal one— so don't chase it by default: one class per rule is enough most of the time.
+
+## Composition: a form is a list of rules
+
+We now have individual rules. What's missing is the orchestrator that gathers and runs them.
+
+```ts
+export abstract class Validator {
+  private readonly rules: ValidationRule[];
+
+  constructor(rules: ValidationRule[]) {
+    this.rules = rules;
+  }
+
+  execute({ success, error }: Props) {
+    const errors: AppException[] = [];
+
+    for (const rule of this.rules) {
+      errors.push(...rule.validate());
+    }
+
+    if (errors.length === 0) {
+      success();
+    } else {
+      error(errors);
+    }
+  }
+}
+```
+
+The `Validator` knows nothing about VINs, miles, or cars. It knows one thing only: _I got a list of rules, I run them all, gather the errors, and branch_. If there were no errors, it calls `success()`; if there were, it hands them to `error()`. This is exactly what the contract anticipated: because each rule receives its data through the constructor, the orchestrator can loop over them without knowing a single one.
+
+And what does validating "a whole car" look like? A class that **extends `Validator` and, in its constructor, assembles the rules**:
+
+```ts
+export class CarValidator extends Validator {
+  constructor({ vin, miles, year, brand, model /* ... */ }: CarValidatorProps) {
+    super([
+      new CarVinValidator(vin),
+      new CarMilesValidator(miles),
+      new CarYearValidator(year),
+      new NotNullValidator(brand, {
+        id: "car.brand.required",
+        message: {
+          es: "El auto debe tener una marca",
+          en: "The car must have a brand",
+        },
+      }),
+      new NotNullValidator(model, {
+        id: "car.model.required",
+        message: {
+          es: "El auto debe tener un modelo",
+          en: "The car must have a model",
+        },
+      }),
+    ]);
+  }
+}
+```
+
+Two things here are worth underlining.
+
+**A new form is assembling, not rewriting.** Validating a car doesn't mean writing validation logic: it means _choosing which rules apply and passing them their data_. The logic already exists, encapsulated in each `ValidationRule`. The entity's validator is a shopping list.
+
+**Generic rules get reused everywhere.** Look at `NotNullValidator`. It's not specific to cars: it's a reusable rule that takes the value and the error to throw if it's `null`:
+
+```ts
+export class NotNullValidator<T> implements ValidationRule {
+  constructor(
+    private readonly value: T | null,
+    private readonly exception: AppException,
+  ) {}
+
+  validate(): AppException[] {
+    return this.value === null ? [this.exception] : [];
+  }
+}
+```
+
+Ten lines that validate "this field is required" for _any_ type, in _any_ form. A car's brand, a deal's customer, a user's role: they all reuse the same piece, only changing the message. That's the opposite of copying `z.string().min(1)` all over the codebase: the rule lives once and gets composed wherever it's needed.
+
+And because `Validator` is abstract and takes an array, nothing ties you to a rigid hierarchy. Need a rule that's conditional on another field? Drop it into the list when it applies. The orchestrator never finds out —to it, everything is "a rule that returns errors."
+
+## The consumption: the component just triggers
+
+We've reached the only point where any of this touches React. And the promise from the intro holds here: the component doesn't know _how_ anything is validated. It just builds its state, constructs the validator, and pulls the trigger.
+
+Here's a complete login form, in a hook:
+
+```tsx
+export default function useLogin() {
+  const { errors } = useToast();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const handleSubmit = () => {
+    const validator = new UserLoginValidator({ email, password });
+
+    validator.execute({
+      success: () => loginUser({ email, password }).then(/* ... */),
+      error: errors,
+    });
+  };
+
+  return { email, setEmail, password, setPassword, handleSubmit };
+}
+```
+
+Read it slowly, because the entire argument of the article is condensed here:
+
+- **State is plain `useState`.** One `useState` per field. No `useForm`, no `register`, no `control`, no resolver. React does what React knows how to do and nothing more.
+- **`execute` branches for you.** If every rule passes, it runs `success` —which chains the backend call—. If any fails, the errors go straight to `error`. The component doesn't write a single `if`: it declares what to do in each branch and steps away.
+- **`error: errors` connects the domain to the UI in one line.** `errors` comes from `useToast` and receives the `AppException[]` as-is. Since each error was born translated, the toast just reads `message[language]` and renders it. The rule traveled from the domain all the way to the screen without anyone translating a thing along the way.
+
+And the JSX consuming that hook stays **completely unaware of the validation system**:
+
+```tsx
+<FormInput label={{ es: "Correo", en: "Email" }} required>
+  <input value={email} onChange={(e) => setEmail(e.target.value)} />
+</FormInput>
+```
+
+This is where the contrast we opened in the intro closes. Your input speaks `value` / `onChange`. Compare that with what the library forces you to write:
+
+```tsx
+// React Hook Form: the markup now speaks the library's dialect
+<input {...register("email")} />
+
+<Controller
+  name="email"
+  control={control}
+  render={({ field }) => <MyInput {...field} />}
+/>
+```
+
+That `register`, that `control`, that `<Controller>` are **plumbing props that seep through your entire component tree**. And the cost isn't aesthetic —whether the JSX looks busier doesn't matter—; the cost is **coupling**: the day you want to swap libraries, or drop one, you don't touch a config file, you touch _every input in every form_. Your presentation layer got married to an external dependency.
+
+In this approach that bond doesn't exist. The `FormInput` doesn't know there's validation; the `<input>` doesn't know there are rules; the component only knows `useState` and "on submit, trigger the validator." If tomorrow you deleted the entire validation folder, the JSX **wouldn't notice**. That independence —UI that renders, domain that validates, no props tying them together— is exactly what we promised when we said _"an invalid field is a domain rule, not a UI state."_
+
+---
+
+## Two clarifications
+
+**On asynchronous validation.** In every example, `validate()` and `execute()` are synchronous: the rule receives its data, decides, and returns the list of errors on the spot. For most form validation that's exactly what you want. But the contract doesn't tie you to synchronous: if you need a rule that depends on a server call —checking that an email isn't already registered, for instance— nothing stops you from making `validate()` return a `Promise<AppException[]>` and having `execute()` await it. The idea —a rule is an object that knows how to enumerate what's wrong— doesn't change; what changes is that the answer can now take time. Use it where it's needed, without turning the whole system asynchronous just because.
+
+**On the framework.** I used React in the examples because it's what I have in production, but notice that the heart of the system —`ValidationRule`, `AppException`, the `Validator` that composes rules— is pure TypeScript: it doesn't import a single line of React. The layer that touches the framework is minimal and lives only in the component (the `useState`, the `handleSubmit`). Taking this to Vue, Angular, or Svelte means rewriting that thin layer —a `ref` instead of `useState`, a component method instead of a hook— and reusing the entire domain as-is.
+
+---
+
+## Let's talk
+
+Questions, feedback, or a different take? I'd love to hear from you. You can find me here:
+
+- **GitHub** — [hgomezrobaina](https://github.com/hgomezrobaina)
+- **LinkedIn** — [Héctor Gómez Robaina](https://www.linkedin.com/in/hector-gomez-robaina)
+- **X** — [@hgomezrobaina](https://x.com/hgomezrobaina)

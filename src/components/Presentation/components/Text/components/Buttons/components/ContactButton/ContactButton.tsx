@@ -1,6 +1,6 @@
-import { ArrowRight } from '../../../../../../../../modules/icon/components'
-import { useTranslation } from '../../../../../../../../modules/language/hooks'
-import { ExternalLink } from '../../../../../../../../modules/app/components'
+import ArrowRight from '../../../../../../../../modules/icon/components/ArrowRight'
+import useTranslation from '../../../../../../../../modules/language/hooks/useTranslation'
+import ExternalLink from '../../../../../../../../modules/app/components/ExtrernalLink/ExternalLink'
 import { EMAIL_URL } from '../../../../../../../../modules/shared/constants/SOCIAL_MEDIA'
 import { clsx } from 'clsx'
 

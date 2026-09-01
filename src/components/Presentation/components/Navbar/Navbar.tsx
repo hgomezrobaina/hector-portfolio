@@ -1,8 +1,10 @@
 // eslint-disable-next-line import/named
 import { LegacyAnimationControls } from 'framer-motion'
-import { CvButton, Logo, Menu } from './components'
-import { Section } from '../../../../modules/shared/components'
-import { useNavbar } from './hooks'
+import CvButton from './components/CvButton/CvButton'
+import Logo from './components/Logo/Logo'
+import Menu from './components/Menu/Menu'
+import Section from '../../../../modules/shared/components/Section/Section'
+import useNavbar from './hooks/useNavbar'
 
 interface Props {
   navBarAnimate: LegacyAnimationControls

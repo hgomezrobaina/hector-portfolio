@@ -1,5 +1,6 @@
-import { Section } from '../../modules/shared/components'
-import { Left, SocialMedia } from './components'
+import Section from '../../modules/shared/components/Section/Section'
+import Left from './components/Left/Left'
+import SocialMedia from './components/SocialMedia/SocialMedia'
 
 export default function Footer() {
   return (

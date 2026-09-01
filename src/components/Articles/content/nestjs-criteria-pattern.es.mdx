@@ -1,0 +1,1092 @@
+## Cinco parámetros y un `find()`
+
+El ejemplo de todo el artículo es el catálogo de una biblioteca. Un libro guarda esto:
+
+```ts
+// src/book/book.schema.ts
+@Schema({ timestamps: true })
+export class Book {
+  @Prop() title: string;
+  @Prop({ type: Types.ObjectId, ref: "Author" }) author: Types.ObjectId;
+  @Prop() publishedAt: Date;
+  @Prop() copies: number; // ejemplares en la estantería
+  @Prop() available: boolean;
+  @Prop() acquisitionPrice: number; // lo que costó adquirirlo: interno, no se publica
+}
+```
+
+El nombre del autor no está aquí: vive en la colección `authors`, al otro lado de esa referencia. Y la pantalla que consume el catálogo es una tabla con buscador, filtros por columna y paginación.
+
+El endpoint que la alimenta se escribe una vez y crece por acumulación. Empieza devolviendo una página con un orden fijo, y para cuando la tabla tiene todos sus filtros ha llegado a esto:
+
+```ts
+// src/book/book.controller.ts
+@Controller("books")
+export class BookController {
+  constructor(
+    @InjectModel(Book.name) private readonly model: Model<BookDocument>,
+  ) {}
+
+  @Get()
+  async getAll(
+    @Query("title") title?: string,
+    @Query("available") available?: string,
+    @Query("minCopies") minCopies?: string,
+    @Query("sortBy") sortBy?: string,
+    @Query("page") page?: string,
+  ) {
+    const filter: FilterQuery<BookDocument> = {};
+
+    if (title) {
+      filter.title = { $regex: title, $options: "i" };
+    }
+
+    if (available) {
+      filter.available = available === "true";
+    }
+
+    if (minCopies) {
+      filter.copies = { $gte: Number(minCopies) };
+    }
+
+    const current = Number(page ?? 1);
+
+    const [items, total] = await Promise.all([
+      this.model
+        .find(filter)
+        .sort({ [sortBy ?? "createdAt"]: -1 })
+        .skip((current - 1) * 20)
+        .limit(20),
+      this.model.countDocuments(filter),
+    ]);
+
+    return { items: items, total: total, page: current };
+  }
+}
+```
+
+El método tiene decisiones correctas dentro: el total sale del mismo filtro que los elementos, así que la paginación no puede contradecirse, y las dos consultas viajan en paralelo. Un listado escrito así sostiene años de producción sin dar un incidente, y su comportamiento no es lo que este artículo se propone corregir.
+
+Lo que conviene medir es lo que queda escrito fuera del archivo. La firma del endpoint y la URL que hace falta para llamarlo son, juntas, un contrato:
+
+```
+GET /books?title=dune&available=true&minCopies=3&sortBy=publishedAt&page=2
+```
+
+Ese contrato no está declarado en ningún sitio y ya está en producción: en cuanto alguien comparte esa URL en un ticket o la deja escrita en un script de importación, los cinco nombres de la query string tienen consumidores fuera del repositorio. Y el vocabulario en el que está redactado no es el del catálogo, es el de la colección: `sortBy=publishedAt` nombra un campo del documento tal como se llama en la base de datos, `minCopies` fija además un operador que no aparece en el nombre, y quien lee `title=dune` no puede saber si busca una coincidencia exacta o parcial, porque eso solo está escrito dentro del `if`.
+
+## Adónde va esto
+
+Lo que este artículo construye es el patrón Criteria: un objeto que describe un listado —qué se filtra, cómo se ordena, qué página— y que viaja del cliente al repositorio traduciéndose dos veces, una en cada frontera. Conviene ver el resultado antes que el análisis, porque todo lo que viene después es la justificación de esta forma y no de otra.
+
+La misma tabla, contra el mismo endpoint, se pide así:
+
+```
+GET /books
+  ?filters[0][field]=title&filters[0][operator]=CONTAINS&filters[0][value][0]=dune
+  &filters[1][field]=authorName&filters[1][operator]=EQUAL&filters[1][value][0]=Herbert
+  &order[by]=publishedAt&order[type]=DESC
+  &page=2&pageSize=20
+```
+
+La respuesta trae la página y lo que hace falta para dibujar el paginador:
+
+```json
+{ "items": [], "totalItems": 143, "totalPages": 8, "pageSize": 20 }
+```
+
+Y el controlador se queda sin un solo nombre de columna dentro:
+
+```ts
+// src/book/infrastructure/nest/book.controller.ts
+@Get()
+async getAll(
+  @Query() request: CriteriaRequest,
+): Promise<PaginationResponse<BookResponse>> {
+  const useCase = new GetAllBooks(this.repository, new BookCriteriaRequestMapper());
+
+  return await useCase.execute({ request: request });
+}
+```
+
+Puestas las dos URL una al lado de la otra, cuatro diferencias se ven sin leer el servidor:
+
+- **El operador está escrito.** `CONTAINS` viaja en la petición, así que quien lee la URL sabe que `dune` busca una coincidencia parcial. En la versión anterior eso solo estaba dentro de un `if`.
+- **El nombre no es el de la columna.** `authorName` no existe en ningún documento —el autor está en otra colección— y aun así se filtra y se ordena por él como por cualquier otra columna.
+- **La firma del endpoint no crece.** Añadir el filtro por ejemplares, el rango de fechas o el décimo campo no cambia ni una línea del controlador: cambia una línea de un enum.
+- **El formato es el mismo para todos los listados.** El de autores y el de préstamos se piden igual, así que el cliente escribe un serializador y no uno por pantalla.
+
+Nada de eso sale gratis: llegar ahí son cuatro archivos por entidad y un traductor por motor de base de datos, y hay proyectos donde no compensa. El resto del artículo es por qué esa forma, qué cuesta y cuándo no vale la pena.
+
+## Cinco puntos, y uno de otra naturaleza
+
+Los sitios donde el endpoint y quien lo llama quedan atados son cinco, y no son todos del mismo tipo. Los cuatro primeros se ven leyendo el archivo; el quinto solo se ve cuando aparece el segundo listado.
+
+**1. El operador vive en el cuerpo del método.** `title` se resuelve con un `$regex` y `minCopies` con un `$gte`, pero ninguno de los dos nombres lo dice, así que el comportamiento del filtro se puede cambiar sin tocar la firma: convertir ese `$regex` en una coincidencia exacta no rompe ninguna compilación y la única señal es que las respuestas empiezan a traer menos filas.
+
+**2. El nombre del parámetro es el nombre del campo.** `sortBy=publishedAt` funciona porque ese string se pasa tal cual a `.sort()`. Renombrar la propiedad en el esquema deja dos salidas: romper las URL que ya circulan, o mantener en el controlador una tabla de alias del nombre viejo al nuevo — que es el mapa de traducción que el patrón acaba formalizando, escrito a destiempo y solo para el campo que se movió.
+
+**3. La firma crece con los campos multiplicados por los operadores.** `minCopies` cubre una de las comparaciones posibles sobre `copies`; el máximo es otro parámetro y el rango exacto un tercero. El endpoint no acumula un parámetro por columna, acumula uno por cada pregunta que alguien quiso hacerle a una columna.
+
+**4. Lo que se puede filtrar no está escrito en ningún sitio: es el residuo de los `if`.** Para saber qué acepta el endpoint hay que leer el método entero y quedarse con las ramas. Con el orden no hay ni ramas que leer, porque `sortBy` entra directo en `.sort()`: cualquier ruta del documento es un orden válido, incluidas las de los campos que el listado no devuelve.
+
+**5. El formato es privado de este endpoint.** El siguiente listado —autores, préstamos, ejemplares— vuelve a decidirlo todo desde cero: si la página se pide con `page` o con `offset`, si el orden es `sortBy` más `order` o un único `sort=-publishedAt`, si un booleano viaja como `true`, como `1` o como la simple presencia del parámetro. Del lado del cliente, cada pantalla escribe su propio serializador y ninguno se parece al anterior lo bastante como para compartirlo.
+
+Los cuatro primeros son molestias de acoplamiento: viven dentro de un archivo, se corrigen editando ese archivo, y lo que cuesta corregirlas no depende de cuánto se haya tardado. El quinto es de otra naturaleza. No vive en ningún archivo, sino en el acuerdo entre quien escribe el endpoint y quien lo consume, y no crece con el número de campos: crece con el producto del número de listados por el número de clientes.
+
+{/*
+FIGURA 1 — §3, el mapa del acoplamiento.
+Fuente: diagrams/02-acoplamiento.d2 · pendiente de exportar a SVG + PNG@2x.
+Pareja de la figura de la tesis: mismo encuadre, mismas cajas, mismo orden.
+Si se toca una, se toca la otra: toda su utilidad está en que se comparan.
+
+Alt: el archivo del controlador, en línea discontinua, contiene los cuatro primeros
+puntos, cada uno con una flecha que vuelve sobre sí mismo. Una quinta caja fuera del
+archivo —el formato de la query string— recibe una flecha del controlador y sale hacia
+una rejilla de nueve casillas, tres clientes por tres listados.
+
+Pie: Los cuatro primeros puntos se quedan dentro del archivo. El quinto sale de él, y
+se reescribe una vez por cada casilla de la rejilla.
+*/}
+
+Con un solo listado, cuatro filtros fijos y una única pantalla llamándolo, ninguno de los cinco tiene coste observable y el método de arriba es la respuesta proporcionada al problema. Se vuelven medibles cuando aparecen tres condiciones, que suelen aparecer juntas: el listado deja de ser uno, el cliente deja de ser uno, y los filtros dejan de ser fijos porque quien los compone es el usuario desde la cabecera de una tabla.
+
+## Tres costes
+
+### 1. La URL es una parte pública del esquema
+
+Los nombres que viajan en la query string son los nombres de los campos del documento, y una URL publicada no tiene versión ni deprecación: existe mientras alguien la conserve. El día que `publishedAt` pasa a `firstPublishedAt`, ni el compilador ni los tests dicen nada, y lo que se rompe son enlaces que ya circulan fuera del repositorio. El coste, sin embargo, no se paga al renombrar: se paga en que **no se renombra**, porque como no hay forma de saber quién llama con el nombre viejo, la migración se pospone y el nombre que ya no describe lo que guarda se queda.
+
+### 2. El endpoint crece multiplicando, no sumando
+
+La firma acumula un parámetro por cada pregunta que se le puede hacer a un campo, y las preguntas útiles sobre una fecha o un número son varias; a eso se le multiplica el número de listados, porque cada uno repite la operación desde cero. El efecto está en la dirección del crecimiento: los parámetros entran pero no salen, porque retirar `minCopies` exige demostrar que nadie lo llama y esa demostración no se puede hacer contra un contrato que no está declarado. El método acaba siendo la suma de todas las pantallas que alguna vez lo llamaron, incluidas las que ya no existen.
+
+### 3. Lo que se puede pedir no está escrito en ninguna parte
+
+`sortBy` llega como texto y entra directo en `.sort()`, así que la lista de campos por los que se puede ordenar no la decide el endpoint: la decide el esquema. Y ordenar por un campo es una forma de leerlo — con `sortBy=acquisitionPrice` y unas cuantas páginas se reconstruye el orden relativo de los precios de adquisición del catálogo entero, sin que la respuesta haya devuelto ni un solo precio. El efecto de segundo orden es dónde queda el control: esa superficie se amplía editando el **esquema**, no el controlador, así que quien añada mañana el margen del proveedor está ampliando lo que la API expone con un diff que no toca ninguno de los archivos donde alguien lo buscaría.
+
+Los tres costes tienen la misma raíz: lo que el cliente puede pedir no existe como dato en ningún sitio, sino repartido entre la firma de un método, el cuerpo de unos `if` y la forma en que cada pantalla arma su URL.
+
+## La justificación que conviene descartar
+
+El patrón Criteria casi siempre se presenta con el mismo argumento: evita la explosión de métodos del repositorio. En la formulación de CodelyTV, que es la referencia del patrón en castellano, si hay que filtrar por varios campos "podemos acabar con un repository con un método por cada campo a filtrar sumado a las permutaciones que puedan haber", y el criteria lo resuelve respetando el principio abierto/cerrado.
+
+El problema que describe existe y el razonamiento es correcto. Lo que conviene medir es su tamaño. Un repositorio real no acumula las permutaciones, acumula los métodos que alguien llegó a necesitar: `findByTitle`, `findByAuthorAndAvailable`, y poco más. El crecimiento no es combinatorio sino igual al número de pantallas, y cuatro o cinco métodos parecidos en una interfaz son incómodos de leer y baratos de corregir — son, exactamente, uno de los cuatro puntos locales y reversibles de la clasificación de arriba.
+
+Hay además algo que ese argumento no toca. La explosión de métodos se resuelve entera dentro del backend: un criteria que el caso de uso monta a mano, con `new BookCriteria({ filters: [...] })`, ya la elimina, y para eso no hacen falta ni el DTO, ni la validación, ni una lista de campos públicos, ni operadores que viajen por la URL. Una implementación justificada solo por ahí se detiene justo antes de la mitad donde están los costes 1 y 3, que son los que no viven en ningún archivo del servidor.
+
+Por eso conviene descartarlo explícitamente y no solo completarlo: mientras la explosión de métodos sea la razón, el patrón se implementa hasta el borde del backend y se para ahí, que es donde empieza el problema de este artículo. El otro argumento que circula —que así se puede cambiar de base de datos— es todavía más flojo en este caso, porque el traductor del criteria es precisamente la pieza barata de una migración; la sección sobre TypeORM lo enseña, pero como consecuencia comprobable y no como motivo.
+
+> **Nota:** el argumento de la portabilidad sí tiene un sitio donde se defiende en serio, que es el patrón Repository, y allí lo medí con detalle: [El patrón Repository en NestJS — una colección que, casualmente, vive en una base de datos](/es/articles/nestjs-repository-pattern). Si esa discusión te interesa, está entera ahí; para lo que sigue basta con saber que no es lo que paga el criteria.
+
+La pregunta que ocupa su lugar es qué hay disponible para el contrato entero: no para evitar métodos repetidos en una interfaz, sino para que un cliente sepa qué puede pedir y el servidor sepa qué acepta. Ahí el ecosistema ofrece más de lo que suele reconocerse.
+
+## Qué hay ya resuelto
+
+**`nestjs-paginate`** es la opción que más lejos llega de fábrica, y conviene decirlo sin matizarlo. El listado del catálogo, entero, en la versión 15.0.1:
+
+```ts
+// src/book/book.controller.ts
+@Get()
+async getAll(@Paginate() query: PaginateQuery): Promise<Paginated<Book>> {
+  return paginate(query, this.repository, {
+    relations: ["author"],
+    sortableColumns: ["title", "publishedAt", "copies"],
+    searchableColumns: ["title", "author.name"],
+    filterableColumns: {
+      available: [FilterOperator.EQ],
+      copies: [FilterOperator.GTE, FilterOperator.LTE],
+      "author.name": [FilterOperator.ILIKE],
+    },
+    defaultSortBy: [["publishedAt", "DESC"]],
+    defaultLimit: 20,
+    maxLimit: 100,
+  });
+}
+```
+
+```
+GET /books?filter.available=$eq:true&filter.copies=$gte:3&sortBy=publishedAt:DESC&page=2&limit=20
+```
+
+`sortableColumns` es un campo requerido, no opcional, y `filterableColumns` declara qué operadores admite cada columna de un catálogo de once —`$eq`, `$gte`, `$in`, `$btw`, `$ilike`, `$null`, `$contains` y compañía— más el sufijo `$not` y los cuantificadores `$all` / `$any` / `$none`. `maxLimit` pone el techo de página, `searchableColumns` da la búsqueda libre, hay paginación por cursor, y un `filterExpressionMaxComplexity` acota cuántos nodos puede tener una expresión de filtro para que nadie tumbe el servidor con un `filter=` anidado. Fíjate además en que `"author.name"` funciona: los nombres pueden atravesar una relación, así que hasta el caso que este artículo usa como prueba de fuego está cubierto. El coste 2 desaparece —un parámetro— y el coste 3 también: lo que no está declarado no entra.
+
+Lo que no resuelve es el vocabulario, y de ahí sale todo lo demás. Los nombres admitidos son del tipo `Column<T>`, que es la ruta de propiedad de la entidad, de modo que `publishedAt` en la URL es `publishedAt` en la clase y el coste 1 permanece intacto. Y `paginate()` recibe un `Repository<T>` o un `SelectQueryBuilder<T>` de TypeORM y devuelve entidades de TypeORM: el contrato es excelente y es inseparable del ORM, así que no existe para quien use Mongoose o Prisma, y un caso de uso no puede expresarlo sin importar TypeORM.
+
+**GraphQL** resuelve el problema entero por otra vía — el cliente declara qué quiere y el esquema es el contrato:
+
+```graphql
+query {
+  books(where: { available: true }, orderBy: { publishedAt: DESC }, first: 20) {
+    title
+    author {
+      name
+    }
+  }
+}
+```
+
+Los tres costes desaparecen a la vez. El precio no es la librería, es el transporte: caché HTTP, autorización, límite de tasa y observabilidad cambian de sitio, y eso lo convierte en una decisión de arquitectura y no en una capa que se añade a un listado.
+
+**Pasar `req.query` entero al `find()`** resuelve el crecimiento del endpoint en cero líneas:
+
+```ts
+@Get()
+async getAll(@Query() query: FilterQuery<BookDocument>) {
+  return this.model.find(query);
+}
+```
+
+Y agrava los otros dos costes hasta el final, porque el vocabulario público pasa a ser el del motor completo: `?acquisitionPrice[$gt]=0` filtra por un campo que nadie decidió exponer, y la superficie del endpoint deja de tener un límite que alguien pueda enunciar.
+
+**Specification y Query Object**, los patrones clásicos, resuelven la composición de condiciones dentro del dominio — en esbozo, `repository.match(new Available().and(new PublishedAfter(2020)))`. Es un problema real y es el que discute la sección anterior, pero ninguno de los dos dice nada sobre el transporte HTTP ni sobre validar lo que llega, que aquí es la mitad del trabajo.
+
+|                              | Coste 1 · URL acoplada al esquema                             | Coste 2 · crecimiento del endpoint | Coste 3 · superficie accidental                |
+| ---------------------------- | ------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------- |
+| `nestjs-paginate`            | No lo aborda: el nombre público es la propiedad de la entidad | **Resuelto**: un solo parámetro    | **Resuelto**: `sortableColumns` es obligatorio |
+| GraphQL                      | **Resuelto**: el esquema es el contrato                       | **Resuelto**                       | **Resuelto**                                   |
+| `where` del ORM al `find()`  | Lo agrava                                                     | **Resuelto**, sin límite           | Lo agrava: la superficie es el motor entero    |
+| Specification / Query Object | No lo aborda                                                  | **Resuelto** dentro del backend    | No lo aborda                                   |
+
+> **Nota:** la tabla no mide ergonomía ni tiempo hasta el primer endpoint en producción, y en las dos cosas `nestjs-paginate` gana con diferencia. Tampoco mide la condición que decide antes que ninguna: qué motor de persistencia hay debajo. Comprobada contra `nestjs-paginate` 15.0.1 y TypeORM 1.1.0 en agosto de 2026; estas APIs cambian entre versiones mayores.
+
+El hueco está ahí. Para quien no use TypeORM no hay nada de todo eso disponible, y para quien lo use, el contrato queda expresado en el vocabulario del ORM. Lo que falta es una descripción del listado que no nombre ni la columna ni la librería.
+
+## La tesis
+
+Fowler define el _Query Object_ en una línea —"un objeto que representa una consulta a la base de datos"— y lo desarrolla como un intérprete: una estructura de objetos capaz de convertirse a sí misma en SQL. Las dos formulaciones miran hacia el motor. La de este artículo mira hacia el otro extremo:
+
+> **Un criteria no es una consulta que viaja por la URL: es la descripción de un listado —qué se filtra, cómo se ordena, qué página— escrita en el vocabulario del dominio y traducida dos veces, una en cada frontera.**
+
+Esa frase determina tres piezas, y las tres ocupan el resto del artículo.
+
+**Un enum de campos públicos por entidad.** El vocabulario del contrato pasa a existir como dato en un archivo, en vez de ser el residuo de unos `if`. Ahí se decide qué puede nombrar un cliente, y esa decisión deja de depender de lo que contenga el esquema: es la respuesta directa a los costes 1 y 3.
+
+**Un criteria de dominio sin dependencias.** El objeto que describe el listado no importa NestJS, ni el driver, ni el ORM. El caso de uso lo construye y lo pasa al repositorio sin saber qué hay detrás, que es lo que permite que el mismo listado se sirva desde Mongo, desde Postgres o desde un doble en memoria durante los tests.
+
+**Dos traducciones que no se conocen entre sí.** La primera convierte el request HTTP en criteria y vive en la capa de aplicación; la segunda convierte el criteria en la consulta del motor y vive en infraestructura. Ninguna sabe de la existencia de la otra, y esa es la propiedad que las dos secciones siguientes ponen a prueba: cambiar de motor toca solo la segunda, y cambiar lo que el cliente puede pedir toca solo la primera.
+
+## La implementación
+
+### El criteria de dominio
+
+Es el archivo completo, no un extracto:
+
+```ts
+// src/shared/domain/criteria/criteria.ts
+type Props = {
+  filters?: CriteriaFilter[];
+  order?: CriteriaOrder | null;
+  page?: number | null;
+  pageSize?: number | null;
+  search?: string | null;
+};
+
+export abstract class Criteria<T extends string> {
+  private _filters: CriteriaFilter[];
+  private _order: CriteriaOrder | null;
+  private _page: number | null;
+  private _pageSize: number | null;
+  private _search: string | null;
+
+  constructor({ filters, order, page, pageSize, search }: Props = {}) {
+    this._filters = filters ?? [];
+    this._order = order ?? null;
+    this._page = page ?? null;
+    this._pageSize = pageSize ?? null;
+    this._search = search ?? null;
+  }
+
+  get filters() {
+    return this._filters;
+  }
+
+  get order() {
+    return this._order;
+  }
+
+  get page() {
+    return this._page;
+  }
+
+  get pageSize() {
+    return this._pageSize;
+  }
+
+  get search() {
+    return this._search;
+  }
+
+  // Reemplaza la lista entera: es lo que hace el mapper con lo que trae el request.
+  setFilters(v: CriteriaFilter[]) {
+    this._filters = v;
+  }
+
+  // Acumula: lo que impone el servidor se añade y el request no puede quitarlo.
+  addFilters(v: CriteriaFilter[]) {
+    this._filters = [...this._filters, ...v];
+  }
+
+  find(field: T): CriteriaFilter[] {
+    return this._filters.filter((f) => f.field === field);
+  }
+}
+```
+
+Lo que interesa de este archivo es lo que no contiene: ni un decorador, ni un import de NestJS, ni uno del driver de base de datos. La propiedad es comprobable — compila con las dependencias del proyecto desinstaladas —, y de ella depende que el mismo objeto pueda construirse en un caso de uso, viajar a un repositorio de Mongo y también a un doble en memoria durante los tests.
+
+Tres detalles cargan más peso del que aparentan. El parámetro `T extends string` es el que ata cada criteria a su lista de campos, de modo que `criteria.find("titulo")` no compila si ese nombre no está en el enum de la entidad. `find` devuelve una lista y no un filtro porque un mismo campo puede llevar dos —`publishedAt` mayor que una fecha y menor que otra es un intervalo—, y quien traduce necesita los dos a la vez. Y la separación entre `setFilters` y `addFilters` existe porque son dos situaciones distintas: los filtros del cliente sustituyen la lista, mientras que los que impone el servidor se acumulan, y con nombres distintos la diferencia se ve en el caso de uso en lugar de tener que recordarla.
+
+### Los filtros tipados
+
+Un filtro es un campo, un operador y unos valores. La clase base fija las dos primeras cosas y deja la tercera a cada tipo:
+
+```ts
+// src/shared/domain/criteria/criteria-filter.ts
+export abstract class CriteriaFilter {
+  readonly field: string;
+  readonly operator: CriteriaFilterOperator;
+
+  constructor({ field, operator }: CriteriaFilterProps) {
+    this.field = field;
+    this.operator = operator;
+  }
+
+  abstract hasValues(): boolean;
+}
+```
+
+```ts
+// src/shared/domain/criteria/criteria-number-filter.ts
+export class CriteriaNumberFilter extends CriteriaFilter {
+  readonly values: number[];
+
+  constructor(props: CriteriaFilterProps & { values: number[] }) {
+    super(props);
+
+    this.values = props.values;
+  }
+
+  numbers(): number[] {
+    return this.values;
+  }
+
+  // Un filtro sin valores no debe restringir la consulta.
+  hasValues(): boolean {
+    return this.numbers().length > 0;
+  }
+}
+```
+
+Hay una alternativa frecuente y conviene decir por qué es peor: guardar `values: unknown[]` junto a un campo discriminante `type: "string" | "number" | "date" | "boolean"`. Con esa forma, el traductor hace un `switch` sobre `type` y el compilador no comprueba que los valores que lee correspondan a la rama en la que está, así que hace falta una aserción `as number[]` en cada caso. Con una clase por tipo, `filter instanceof CriteriaNumberFilter` estrecha el tipo y `filter.numbers()` ya devuelve `number[]`. La diferencia se cobra en el traductor de infraestructura, que es un `switch` largo sobre operadores y el sitio del patrón donde más fácil resulta equivocarse en silencio.
+
+### El enum de campos públicos
+
+Este archivo es la superficie entera de lo que un cliente puede nombrar:
+
+```ts
+// src/book/domain/criteria/book-criteria-field.ts
+export enum BookCriteriaField {
+  ID = "id",
+  TITLE = "title",
+  AUTHOR_NAME = "authorName",
+  PUBLISHED_AT = "publishedAt",
+  COPIES = "copies",
+  AVAILABLE = "available",
+}
+```
+
+```ts
+// src/book/domain/criteria/book-criteria.ts
+export class BookCriteria extends Criteria<BookCriteriaField> {}
+```
+
+`acquisitionPrice` no está, y esa ausencia es toda la respuesta al coste 3: la superficie de la API ya no la decide el esquema. Quien añada mañana el margen del proveedor al documento no amplía nada, porque para nombrarlo desde una URL habría que editar este archivo, que es exactamente donde alguien lo buscaría en una revisión.
+
+`authorName`, en cambio, sí está, y no es un campo del documento. El enum es el vocabulario del listado, no el del esquema — y ahí se resuelve el coste 1, porque el nombre público deja de estar atado al nombre de la columna y renombrar una propiedad se convierte en un cambio interno. Que `authorName` viva en otra colección es un problema del traductor, y de él se ocupa la prueba de fuego, más adelante.
+
+El criteria concreto es una línea porque toda su tipificación viene del enum: a partir de aquí, cualquier `find` fuera de esos seis nombres deja de compilar.
+
+### El request
+
+Este es el único archivo del patrón con decoradores, y la concentración es deliberada: es la frontera por donde entra lo que no controlas.
+
+```ts
+// src/shared/application/dto/criteria-request.ts
+export class CriteriaFilterRequest {
+  @IsString()
+  @IsNotEmpty()
+  field: string;
+
+  @IsEnum(CriteriaFilterOperator)
+  operator: CriteriaFilterOperator;
+
+  // qs devuelve string cuando el query trae `value=x` una sola vez, y array cuando
+  // trae índices (`value[0]=x`); se normaliza para no depender de cuántos valores
+  // haya mandado el cliente.
+  @IsDefined()
+  @Transform(({ value }) => (Array.isArray(value) ? value : [value]))
+  @IsArray()
+  @IsString({ each: true })
+  value: string[];
+}
+
+export class CriteriaRequest {
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CriteriaFilterRequest)
+  filters?: CriteriaFilterRequest[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CriteriaOrderRequest)
+  order?: CriteriaOrderRequest;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  pageSize?: number;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
+}
+```
+
+Dos ajustes del arranque de la aplicación deciden si esto funciona, y los dos fallan en silencio:
+
+```ts
+// src/main.ts
+const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+// Express 5 parsea el query con `simple`, que es querystring.parse y no anida:
+// `order[by]` llegaría como una clave llamada literalmente "order[by]".
+app.set("query parser", "extended");
+
+// Sin `transform`, los @Type() del DTO no se aplican y `page` sigue siendo string.
+app.useGlobalPipes(new ValidationPipe({ transform: true }));
+```
+
+El primero es un cambio de la versión 5: en `lib/application.js` de Express 5.2.1, la configuración por defecto es `this.set('query parser', 'simple')`, y `extended` es lo que enchufa `qs`. Sin él, un `filters[0][field]=title` no llega como objeto anidado y la validación rechaza el request entero sin que sea culpa del cliente.
+
+### El mapper del request
+
+Es la primera de las dos traducciones. Convierte el DTO en criteria, y por el camino toma tres decisiones:
+
+```ts
+// src/shared/application/criteria/criteria-request-mapper.ts
+export type CriteriaFilterOption<T extends string> = {
+  field: T;
+  type: CriteriaFilterType;
+};
+
+export abstract class CriteriaRequestMapper<T extends string> {
+  abstract options(): CriteriaFilterOption<T>[];
+
+  execute({ criteria, request }: Props<T>): Criteria<T> {
+    if (request.search !== undefined) {
+      criteria.setSearch(this.mapSearch(request.search));
+    }
+
+    // La paginación se fija siempre, la traiga el request o no: un criteria sin
+    // pageSize se traduce en una consulta sin límite.
+    criteria.setPage(this.mapPage(request.page));
+    criteria.setPageSize(this.mapPageSize(request.pageSize));
+
+    if (request.order !== undefined) {
+      criteria.setOrder(
+        new CriteriaOrder({
+          orderBy: request.order.by,
+          orderType: request.order.type,
+        }),
+      );
+    }
+
+    if (request.filters !== undefined) {
+      const options = this.options();
+      const result: CriteriaFilter[] = [];
+
+      for (const filter of request.filters) {
+        const mapped = this.mapFilter(filter, options);
+
+        if (mapped !== null) {
+          result.push(mapped);
+        }
+      }
+
+      criteria.setFilters(result);
+    }
+
+    return criteria;
+  }
+
+  // El tope es lo que impide que un pageSize absurdo acabe en un find() sin límite.
+  private mapPageSize(value: number | undefined): number {
+    if (value === undefined || !Number.isFinite(value)) {
+      return DEFAULT_PAGE_SIZE;
+    }
+
+    return Math.min(Math.max(Math.trunc(value), 1), MAX_PAGE_SIZE);
+  }
+
+  // Lo que no está en options() no se filtra: no hay campo al que aplicarlo.
+  private mapFilter(
+    filter: CriteriaFilterRequest,
+    options: CriteriaFilterOption<T>[],
+  ): CriteriaFilter | null {
+    const option = options.find((o) => o.field === filter.field);
+
+    if (option === undefined) {
+      return null;
+    }
+
+    const props = { field: option.field, operator: filter.operator };
+
+    switch (option.type) {
+      case CriteriaFilterType.STRING:
+        return new CriteriaStringFilter({ ...props, values: filter.value });
+
+      case CriteriaFilterType.NUMBER:
+        return new CriteriaNumberFilter({
+          ...props,
+          values: this.mapNumbers(filter.value),
+        });
+
+      // ...fechas y booleanos, igual
+    }
+  }
+}
+```
+
+Y el de la entidad declara la lista, que es lo único que hay que escribir por listado:
+
+```ts
+// src/book/application/criteria/book-criteria-request-mapper.ts
+export class BookCriteriaRequestMapper extends CriteriaRequestMapper<BookCriteriaField> {
+  options(): CriteriaFilterOption<BookCriteriaField>[] {
+    return [
+      { field: BookCriteriaField.ID, type: CriteriaFilterType.STRING },
+      { field: BookCriteriaField.TITLE, type: CriteriaFilterType.STRING },
+      { field: BookCriteriaField.AUTHOR_NAME, type: CriteriaFilterType.STRING },
+      { field: BookCriteriaField.PUBLISHED_AT, type: CriteriaFilterType.DATE },
+      { field: BookCriteriaField.COPIES, type: CriteriaFilterType.NUMBER },
+      { field: BookCriteriaField.AVAILABLE, type: CriteriaFilterType.BOOLEAN },
+    ];
+  }
+}
+```
+
+La primera decisión es que **el tipo declarado en `options()` es quien convierte el texto**. La query string no tiene tipos, así que el `"3"` de `copies` se vuelve el número `3` aquí, una sola vez, y no en cada traductor de motor por su cuenta. La segunda es el **tope de página**: fijar `page` y `pageSize` siempre, con `MAX_PAGE_SIZE` por techo, es lo que impide que un cliente convierta un listado en un volcado de la colección.
+
+La tercera conviene decirla con su coste. Un filtro sobre un campo no declarado **se descarta en silencio**, no devuelve un 400, y eso significa que una errata del cliente produce la lista sin filtrar en vez de un error visible — que es peor para depurar. La razón de elegirlo así es que una URL guardada hace meses sigue devolviendo algo sensato cuando un campo deja de ser filtrable, en lugar de romperse. `nestjs-paginate` toma la decisión contraria y ofrece `throwOnInvalidFilter`; las dos son defendibles, y lo que no es defendible es no haber elegido.
+
+> **Nota:** el compilador no comprueba que `options()` cubra el enum entero. Declararlo como un `Record<BookCriteriaField, CriteriaFilterType>` en vez de una lista sí lo exigiría, a cambio de perder la forma de tabla. Tal como está, que un campo del enum se quede sin tipo es un descuido que solo se nota filtrando.
+
+Aquí está también el coste del patrón, en el mismo sitio que el beneficio: por cada listado hay que escribir cuatro archivos —el enum, el criteria de una línea, el mapper con su `options()` y el mapa de infraestructura que aparece más abajo— donde antes había cinco `@Query()`. Lo que se gana a cambio es que esos cuatro se leen en un minuto y dicen la verdad completa sobre lo que el endpoint acepta.
+
+### El caso de uso y el puerto
+
+El repositorio de dominio expone un solo método para listar:
+
+```ts
+// src/book/domain/repository/book.repository.ts
+export interface BookRepository {
+  pagination(criteria: BookCriteria): Promise<PaginationRepositoryResult<Book>>;
+}
+```
+
+```ts
+// src/book/application/use-cases/get-all-books.ts
+export class GetAllBooks {
+  constructor(
+    private readonly repository: BookRepository,
+    private readonly criteriaMapper: BookCriteriaRequestMapper,
+  ) {}
+
+  async execute({ request }: Props): Promise<PaginationResponse<BookResponse>> {
+    const criteria = this.criteriaMapper.execute({
+      // el orden por defecto es la publicación más reciente; si el request trae
+      // `order`, el mapper lo pisa
+      criteria: new BookCriteria({
+        order: new CriteriaOrder({
+          orderBy: BookCriteriaField.PUBLISHED_AT,
+          orderType: CriteriaOrderType.DESC,
+        }),
+      }),
+      request: request,
+    });
+
+    const result = await this.repository.pagination(criteria);
+
+    return PaginationResponseMapper.execute({
+      result: {
+        ...result,
+        items: result.items.map((b) => BookMapper.execute(b)),
+      },
+    });
+  }
+}
+```
+
+El criteria se construye en el caso de uso y no en el controlador porque el orden por defecto es una decisión de producto —qué ve primero quien abre la pantalla—, no una del transporte. El mapper lo recibe ya construido y solo pisa lo que el request traiga.
+
+Ese reparto es también el que hace seguro imponer condiciones desde el servidor. Si el listado público solo debe enseñar los ejemplares disponibles, el filtro se añade **después** del mapper:
+
+```ts
+criteria.addFilters([
+  new CriteriaBooleanFilter({
+    field: BookCriteriaField.AVAILABLE,
+    operator: CriteriaFilterOperator.EQUAL,
+    value: true,
+  }),
+]);
+```
+
+Con `setFilters` en ese lugar, un cliente que mandara su propio `filters` borraría la restricción y el fallo no lanzaría nada: serían filas de más en la respuesta. Es exactamente el motivo por el que las dos operaciones tienen nombres distintos.
+
+### La traducción a Mongo
+
+La segunda traducción vive en infraestructura y arranca con un mapa:
+
+```ts
+// src/book/infrastructure/mongo/book-mongo-repository.ts
+private readonly criteriaFields: MongoCriteriaField<BookCriteriaField>[] = [
+  { field: BookCriteriaField.ID, mongo: "_id", canSearch: false },
+  { field: BookCriteriaField.TITLE, mongo: "title", canSearch: true },
+  { field: BookCriteriaField.AUTHOR_NAME, mongo: "author.name", canSearch: true },
+  { field: BookCriteriaField.PUBLISHED_AT, mongo: "publishedAt", canSearch: false },
+  { field: BookCriteriaField.COPIES, mongo: "copies", canSearch: false },
+  { field: BookCriteriaField.AVAILABLE, mongo: "available", canSearch: false },
+];
+```
+
+Ese mapa es la tabla de alias que el punto 2 del inventario describía como el parche que se escribe tarde y solo para el campo que se movió. Aquí existe desde el principio y cubre todos los campos, así que `id → _id` deja de ser un caso especial y pasa a ser una fila más. `canSearch` resuelve la otra pregunta: qué entra en la búsqueda libre. Solo el título y el autor, que son las dos cosas que la tabla enseña — buscar por un campo que no se ve deja filas sin explicación aparente.
+
+El constructor de la consulta recorre ese mapa:
+
+```ts
+// src/shared/infrastructure/mongo/mongo-criteria-builder.ts
+execute({ criteria, fields }: Props<T>): CriteriaResult {
+  const result: CriteriaResult = { filter: {}, order: null, skip: null, limit: null };
+
+  // Cada campo puede aportar varios fragmentos —un filtro por operador—, así que se
+  // aplanan: `$and` es una lista de condiciones, no de listas.
+  const fragments = fields.flatMap((f) =>
+    this.filterMapper.execute({ name: f.mongo, filters: criteria.find(f.field) }),
+  );
+
+  if (fragments.length > 0) {
+    result.filter.$and = fragments;
+  }
+
+  if (criteria.search !== null) {
+    const value = criteria.search;
+
+    const search = fields
+      .filter((f) => f.canSearch)
+      // el texto viene del buscador y `$regex` lo interpreta: hay que escaparlo
+      .map((f) => ({ [f.mongo]: { $regex: escape(value), $options: "i" } }));
+
+    if (search.length > 0) {
+      result.filter.$or = search;
+    }
+  }
+
+  const order = criteria.order;
+
+  if (order !== null && order.hasOrder()) {
+    // el orden se resuelve contra el mismo mapa que los filtros: no se puede ordenar
+    // por un campo que no esté en él
+    const found = fields.find((f) => f.field === order.orderBy);
+
+    if (found) {
+      const direction = order.orderType === CriteriaOrderType.ASC ? 1 : -1;
+
+      result.order = { [found.mongo]: direction };
+    }
+  }
+
+  if (criteria.pageSize !== null) {
+    const page = criteria.page ?? 1;
+
+    result.skip = (page - 1) * criteria.pageSize;
+    result.limit = criteria.pageSize;
+  }
+
+  return result;
+}
+```
+
+Que el orden se resuelva contra el mismo mapa cierra el coste 3 por el otro extremo: el enum controla lo que se puede nombrar al entrar, y el mapa controla lo que existe al salir. Para ordenar por `acquisitionPrice` haría falta que estuviera en los dos archivos.
+
+Los operadores se traducen aparte, un método por tipo de filtro:
+
+```ts
+// src/shared/infrastructure/mongo/mongo-criteria-filter-mapper.ts
+private mapNumber(name: string, filter: CriteriaNumberFilter): FilterQuery<unknown> | null {
+  const values = filter.numbers();
+  const [first] = values;
+  const single = values.length === 1;
+
+  switch (filter.operator) {
+    case CriteriaFilterOperator.EQUAL:
+      return { [name]: single ? first : { $in: values } };
+
+    case CriteriaFilterOperator.NOT_EQUAL:
+      return { [name]: single ? { $ne: first } : { $nin: values } };
+
+    // Los operadores de comparación son binarios: con varios valores solo tiene
+    // sentido el primero.
+    case CriteriaFilterOperator.GTE:
+      return { [name]: { $gte: first } };
+
+    default:
+      return null;
+  }
+}
+```
+
+El `default` que devuelve `null` es lo que hace que un operador sin sentido para el tipo —`CONTAINS` sobre un booleano— no filtre en lugar de romper la consulta. Y conviene fijarse en lo que este archivo **devuelve**: fragmentos y valores sueltos, no una consulta montada. El builder entrega `filter`, `order`, `skip` y `limit` por separado, y quién los usa y cómo es decisión del repositorio. Esa elección parece un detalle de estilo y es la que decide si el patrón sobrevive a la prueba de fuego.
+
+### La página y el total salen del mismo filtro
+
+```ts
+async pagination(criteria: BookCriteria): Promise<PaginationRepositoryResult<Book>> {
+  const result = this.criteriaBuilder.execute({
+    criteria: criteria,
+    fields: this.criteriaFields,
+  });
+
+  const query = this.model.find(result.filter);
+
+  if (result.order !== null) {
+    query.sort(result.order);
+  }
+
+  if (result.skip !== null) {
+    query.skip(result.skip);
+  }
+
+  if (result.limit !== null) {
+    query.limit(result.limit);
+  }
+
+  // Las dos consultas salen del mismo filtro y viajan en paralelo; el conteo no
+  // lleva skip ni limit porque acotan la página, no el total.
+  const [list, count] = await Promise.all([
+    query,
+    this.model.countDocuments(result.filter),
+  ]);
+
+  return {
+    items: list.map((i) => BookMongoMapper.execute(i)),
+    count: count,
+    pageSize: criteria.pageSize,
+  };
+}
+```
+
+Es la única decisión del listado original que el patrón conserva tal cual, y conviene decir por qué importa: si el conteo se construyera por su cuenta, el total y la página podrían responder a filtros distintos y la paginación mentiría sin fallar. El síntoma es una última página vacía, o un número de resultados que no cuadra con lo que se ve, y ninguna de las dos cosas aparece en un log.
+
+### Punto por punto
+
+De los cinco del inventario, cuatro quedan cerrados. El operador ya no vive en el cuerpo del método: viaja explícito en la URL y lo valida un `@IsEnum`. El nombre público dejó de ser el nombre de la columna, que ahora es una celda del mapa de infraestructura. La firma del endpoint es `@Query() request: CriteriaRequest` y no cambia al añadir un filtro, así que el crecimiento por multiplicación desaparece. Y lo que se puede filtrar y ordenar está escrito en dos archivos que se leen en un minuto, en lugar de deducirse de unas ramas. El quinto —el formato compartido entre listados y clientes— queda cerrado en cuanto hay un segundo listado, porque de todo lo que se ha escrito en esta sección solo los cuatro archivos del catálogo son suyos: el resto ya está puesto.
+
+Queda una fila del mapa que todavía miente. `authorName` apunta a `author.name`, y un documento de `books` no tiene ninguna propiedad `author.name`: guarda una referencia. Con el `find()` de arriba, ese filtro no falla — sencillamente no encuentra nada, que es la peor de las dos opciones.
+
+## La prueba de fuego: el campo que no vive en la colección
+
+La tabla enseña el nombre del autor en una columna, así que hay que poder filtrar y ordenar por él igual que por el título. El dato está en `authors`, al otro lado de una referencia, y el listado se pagina: la página y el total tienen que salir del mismo conjunto de filas.
+
+La salida que se prueba primero es `populate`, y falla de una manera que conviene mirar de cerca:
+
+```ts
+this.model
+  .find(result.filter)
+  .populate({ path: "author", match: { name: "Herbert" } });
+```
+
+`populate` resuelve la lectura, no el filtrado. El `match` se aplica al documento poblado, no al libro, así que los libros de otros autores siguen viniendo — con `author: null` en lugar de desaparecer. El `countDocuments` cuenta esos también, y el resultado es una tabla con huecos y un total que no corresponde a lo que se ve.
+
+La segunda salida sí filtra, y es la que instala el problema de verdad:
+
+```ts
+const filters = criteria.find(BookCriteriaField.AUTHOR_NAME);
+
+if (filters.length > 0) {
+  const ids = await this.authorModel.find({ name: /* ... */ }).distinct("_id");
+
+  result.filter.author = { $in: ids };
+}
+```
+
+Funciona, y a cambio el repositorio vuelve a tener una rama por campo especial. Sigue sin poder ordenar por el nombre del autor, porque el `$sort` opera sobre la colección de libros y ahí no hay ningún nombre. Y el conocimiento de que existen dos colecciones, que el patrón había sacado por la puerta, vuelve a entrar por un `if` — con el agravante de que cada campo derivado que se añada después traerá el suyo.
+
+La salida buena depende de una decisión que ya está tomada: el builder no devuelve una consulta, devuelve `filter`, `order`, `skip` y `limit` por separado. Quién los usa y en qué orden es cosa del repositorio:
+
+```ts
+// src/book/infrastructure/mongo/book-mongo-repository.ts
+async pagination(criteria: BookCriteria): Promise<PaginationRepositoryResult<Book>> {
+  const result = this.criteriaBuilder.execute({
+    criteria: criteria,
+    fields: this.criteriaFields,
+  });
+
+  // El autor viaja en cada fila, así que el lookup va ANTES del match: solo así se
+  // puede filtrar y ordenar por su nombre como por cualquier otra columna.
+  //
+  // El $unwind NO preserva los vacíos: un libro sin autor no es una fila con un
+  // hueco, es una referencia rota. Aquí no aparece.
+  const join: PipelineStage[] = [
+    {
+      $lookup: {
+        from: this.authorModel.collection.name,
+        localField: "author",
+        foreignField: "_id",
+        as: "author",
+      },
+    },
+    { $unwind: "$author" },
+    { $match: result.filter },
+  ];
+
+  const page: PipelineStage[] = [...join];
+
+  if (result.order !== null) {
+    page.push({ $sort: result.order });
+  }
+
+  if (result.skip !== null) {
+    page.push({ $skip: result.skip });
+  }
+
+  if (result.limit !== null) {
+    page.push({ $limit: result.limit });
+  }
+
+  const [list, counted] = await Promise.all([
+    this.model.aggregate<MongoBook>(page),
+    this.model.aggregate<{ count: number }>([...join, { $count: "count" }]),
+  ]);
+
+  return {
+    items: list.map((i) => BookMongoMapper.execute(i)),
+    count: counted[0]?.count ?? 0,
+    pageSize: criteria.pageSize,
+  };
+}
+```
+
+El `$lookup` va antes del `$match` porque `author.name` tiene que existir en el documento cuando el filtro se evalúa, y esa ordenación de etapas es exactamente lo que un builder que devolviera una consulta montada no podría decidir. Tendría que conocer las colecciones para colocar el `$lookup` —y entonces el traductor sabría de relaciones, que es la contaminación que se quería evitar— o bien habría que saltárselo para este campo, que es volver al `if`. Devolver piezas no era una preferencia de estilo: era lo que dejaba esta decisión en manos de quien sí conoce el motor.
+
+El `$unwind` sin `preserveNullAndEmptyArrays` es la otra decisión, y es de negocio: un libro cuyo autor ya no existe no aparece en el catálogo. Si el negocio dijera lo contrario, cambia esa etapa y nada más.
+
+{/*
+FIGURA 2 — §9, el par obvio / solución.
+Fuente: diagrams/09-prueba-de-fuego.excalidraw · pendiente.
+Dos viñetas con el MISMO encuadre y una sola diferencia visible.
+
+Alt: a la izquierda, la colección de libros con un `if` colgando que dispara una
+segunda consulta contra autores y devuelve una lista de ids. A la derecha, la misma
+colección con tres etapas en fila —lookup, unwind, match— y el mismo bloque de piezas
+(filter, order, skip, limit) entrando en la tercera.
+
+Pie: La diferencia no está en lo que se consulta, sino en quién decide el orden de las
+etapas.
+*/}
+
+Lo que la sección tenía que demostrar es lo que **no** cambió. `authorName` filtra y ordena como cualquier otra columna, y para conseguirlo no se tocaron el enum, ni el criteria, ni el DTO, ni el mapper del request, ni el caso de uso, ni la URL que escribe el cliente. El `find` se convirtió en un `aggregate` dentro de un archivo de infraestructura, y el contrato no se enteró — que es la propiedad que la tesis prometía y la que decide si el patrón aguanta el tercer listado. La fila del mapa que antes no encontraba nada dice ahora la verdad, y para conseguirlo no ha dejado de ser una fila.
+
+## El mismo criteria contra TypeORM
+
+Todo lo anterior está escrito contra Mongo, y la única pieza que sabe que hay un Mongo debajo es el builder. Cambiar de motor es escribir otro:
+
+```ts
+// src/shared/infrastructure/typeorm/typeorm-criteria-builder.ts
+export type TypeOrmCriteriaField<T extends string> = {
+  field: T;
+  column: string;
+  canSearch: boolean;
+};
+
+export class TypeOrmCriteriaBuilder<T extends string, E> {
+  execute({ criteria, fields }: Props<T>): TypeOrmCriteriaResult<E> {
+    const where: FindOptionsWhere<E> = {};
+
+    for (const f of fields) {
+      const operators = criteria
+        .find(f.field)
+        .filter((filter) => filter.hasValues())
+        .map((filter) => this.operatorMapper.execute(filter));
+
+      if (operators.length === 0) {
+        continue;
+      }
+
+      // Dos filtros sobre el mismo campo son un intervalo, y TypeORM los combina
+      // con And(): es el equivalente de los dos fragmentos del `$and` de Mongo.
+      const condition =
+        operators.length === 1 ? operators[0] : And(...operators);
+
+      // `author.name` se anida como `{ author: { name: ... } }`: TypeORM no acepta
+      // la ruta con punto como clave, así que la columna se parte por el punto.
+      this.assign(where, f.column.split("."), condition);
+    }
+
+    const pageSize = criteria.pageSize;
+
+    return {
+      where: where,
+      order: this.mapOrder(criteria, fields),
+      skip:
+        pageSize === null ? undefined : ((criteria.page ?? 1) - 1) * pageSize,
+      take: pageSize ?? undefined,
+    };
+  }
+}
+```
+
+El traductor de operadores es el mismo `switch` con otro vocabulario:
+
+```ts
+private map(filter: CriteriaNumberFilter): FindOperator<number> | null {
+  const values = filter.numbers();
+  const [first] = values;
+  const single = values.length === 1;
+
+  switch (filter.operator) {
+    case CriteriaFilterOperator.EQUAL:
+      return single ? Equal(first) : In(values);
+
+    case CriteriaFilterOperator.NOT_EQUAL:
+      return single ? Not(Equal(first)) : Not(In(values));
+
+    case CriteriaFilterOperator.GTE:
+      return MoreThanOrEqual(first);
+
+    case CriteriaFilterOperator.LTE:
+      return LessThanOrEqual(first);
+
+    default:
+      return null;
+  }
+}
+```
+
+Y el repositorio queda más corto que su gemelo de Mongo, porque `findAndCount` devuelve la página y el total en una sola llamada y contra el mismo `where` — la regla que en Mongo había que sostener a mano la impone aquí la firma del método:
+
+```ts
+async pagination(criteria: BookCriteria): Promise<PaginationRepositoryResult<Book>> {
+  const result = this.criteriaBuilder.execute({
+    criteria: criteria,
+    fields: this.criteriaFields,
+  });
+
+  const [list, count] = await this.repository.findAndCount({
+    relations: { author: true },
+    where: result.where,
+    order: result.order,
+    skip: result.skip,
+    take: result.take,
+  });
+
+  return {
+    items: list.map((i) => BookTypeOrmMapper.execute(i)),
+    count: count,
+    pageSize: criteria.pageSize,
+  };
+}
+```
+
+El campo que no vive en la tabla —el que costó una sección entera en Mongo— aquí es la misma fila del mapa con un punto, `authorName → "author.name"`, y el `JOIN` lo pone el ORM al ver la relación en el `where`. Cuando la consulta necesita más control, la alternativa es empujar las mismas piezas sobre un `SelectQueryBuilder` con `leftJoin` explícito, que es el equivalente literal del `$lookup`; lo que no cambia en ninguno de los dos casos es de dónde salen las piezas.
+
+> **Nota:** `ILike` no significa lo mismo en todos los motores. En TypeORM 1.1.0, la condición se emite como `ILIKE` nativo en PostgreSQL y CockroachDB, y en cualquier otro driver se traduce a `UPPER(columna) LIKE UPPER(parámetro)`. Funciona igual y rinde distinto: la segunda forma no aprovecha un índice sobre la columna, hace falta uno funcional sobre la expresión. Es la clase de diferencia que el criteria no puede ocultar, porque no es de vocabulario sino de motor.
+
+Con Prisma el ejercicio es el mismo con un tercer vocabulario: el builder devolvería `where`, `orderBy`, `skip` y `take`, y el repositorio los pasaría a `findMany` junto a un `count` con el mismo `where`.
+
+Lo que hay que escribir para portar un listado entero, entonces, es un builder y un mapa de campos; lo demás son las mismas piezas de antes, sin tocar. Esto es lo que la sección de las justificaciones prometía enseñar como consecuencia y no como motivo — la portabilidad existe y es comprobable, pero sigue sin ser la razón por la que se paga el patrón, porque cambiar de motor de base de datos es raro y tener tres listados y dos clientes es lo normal.
+
+## El otro extremo, en un apartado
+
+El cliente construye el mismo objeto y lo entrega como parámetros de la petición:
+
+```ts
+// src/modules/criteria/criteria-request.ts
+params(): CriteriaRequestDTO {
+  const result: CriteriaRequestDTO = {};
+
+  // Un filtro sin valores no restringe nada: no viaja.
+  const filters = this.filters.filter((f) => f.hasValues());
+
+  if (filters.length > 0) {
+    result.filters = filters.map((f) => f.dto());
+  }
+
+  if (this.order !== undefined && this.order.hasOrder()) {
+    result.order = this.order.dto();
+  }
+
+  // El buscador vacío no es una búsqueda por "".
+  if (this.search !== undefined && this.search.trim() !== "") {
+    result.search = this.search;
+  }
+
+  return result;
+}
+```
+
+Y la petición es una llamada normal, sin nada alrededor:
+
+```ts
+import axios from "axios";
+
+const { data } = await axios.get<PaginationResponse<BookResponse>>("/books", {
+  params: criteria.params(),
+  // sin esto, cancelar una búsqueda mientras se teclea es decorativo
+  signal: controller?.signal,
+});
+```
+
+Ese `params` es lo que produce la URL del principio del artículo, con sus corchetes y todo: nadie la escribe a mano. No hay serializador propio en ninguno de los dos lados, porque axios ya escribe los objetos anidados en notación de corchetes y `qs` los reconstruye del otro lado, que es justo lo que el `query parser` `extended` del arranque habilita. Las dos reglas del snippet anterior existen porque afectan a la URL y no al servidor: lo que no restringe no viaja, y una URL sin ruido es la diferencia entre poder compartirla y no.
+
+Conviene decir dónde se acaba la seguridad de tipos. El enum es la superficie entera de lo que un cliente puede nombrar, pero esa garantía vive en el servidor: lo que viaja por la URL es texto, y en el cliente `field` vuelve a ser un `string`. Que las dos listas digan lo mismo es una convención de equipo, no un contrato que alguien compruebe — y cuando un campo deja de ser filtrable, el síntoma es el que ya se describió: la lista llega sin filtrar. Cerrarlo del todo exige generar los nombres desde una fuente común, o publicar el enum en un paquete compartido, y las dos cosas atan el despliegue del cliente al del servidor.
+
+> **Nota:** cómo una tabla mantiene ese objeto sincronizado con la URL del navegador, con el estado de las columnas y con la cancelación de peticiones en vuelo es material de un artículo propio.
+
+## Dos matices honestos, y lo que esto no es
+
+**El patrón abarata exponer un filtro, no servirlo.** Añadir un campo filtrable cuesta una línea en el enum y otra en el mapa, y esa facilidad es justo el riesgo: seis campos filtrables en cualquier combinación son muchas más consultas distintas de las que el equipo va a mirar en un plan de ejecución. Ningún índice se deduce del criteria, así que conviene decidir qué combinaciones se ofrecen sabiendo cuáles están indexadas, en lugar de descubrirlo cuando la tabla crezca.
+
+**La paginación por `skip` se degrada con el desplazamiento.** El motor recorre lo que salta, así que la página 500 cuesta más que la 2. Con el techo de `MAX_PAGE_SIZE` y listados de panel no se observa, y en un feed largo la respuesta correcta es un cursor — que el patrón admite sin cambiar de forma. El criteria llevaría un cursor en lugar de una página, el traductor lo convertiría en una condición más sobre el último elemento visto, y el enum, los filtros y las dos traducciones se quedan donde están. Lo que sí cambia es una restricción del contrato: el orden tiene que incluir una columna única como desempate, así que ya no se puede ordenar por cualquier campo del enum.
+
+Y conviene decir lo que esto no es: **un motor de consultas**. No hay `OR` entre filtros distintos, ni grupos, ni paréntesis — todos los filtros se combinan con `AND` y el `OR` está reservado a la búsqueda libre. Quien necesite componer expresiones necesita GraphQL o un lenguaje propio, y es mejor saberlo antes de escribir el primer archivo que después del tercer listado.
+
+## Para quién es esto, y para quién no
+
+Empezando por el no: un backend con un listado, tres o cuatro filtros fijos y una sola pantalla que lo consume. Ahí esto son unos quince archivos compartidos más cuatro por listado para sustituir cinco `@Query()` que funcionan, y ninguno de los tres costes tiene todavía un síntoma observable. La respuesta correcta en ese proyecto es la simple, y adoptar el patrón por adelantado es pagar por un problema que quizá no llegue.
+
+Cuatro condiciones invierten el balance, y rara vez aparecen solas: tres o más listados paginados; más de un cliente consumiéndolos —un panel interno, una app, alguien integrando por API—; filtros que el usuario **compone** desde la cabecera de una tabla en vez de elegir de una lista fija; y listados que se comparten por URL. Con dos de ellas presentes, el coste queda amortizado en el segundo listado, porque los quince archivos compartidos se escriben una sola vez y a partir de ahí cada listado son cuatro, uno de los cuales es una línea.
+
+La regla práctica cabe en una línea: si lo que el cliente puede pedir aún cabe en la firma de un método, déjalo ahí; en cuanto deje de caber, el sitio donde vive esa lista es un archivo, no un método.
+
+## El código
+
+El proyecto ejecutable está en [hgomezrobaina/nestjs-criteria-pattern](https://github.com/hgomezrobaina/nestjs-criteria-pattern), con el catálogo de la biblioteca montado sobre Mongo: `docker compose up -d && npm install && npm run seed && npm run dev`.
+
+Lo que conviene mirar no es que arranque, sino su suite: **26 tests en 19 milisegundos, sin base de datos**. Ahí dentro está comprobado lo que este artículo afirma — que un filtro sobre un campo no declarado se descarta, que el `pageSize` tiene techo, que un filtro que impone el servidor sobrevive a un `filters` del cliente, que `id` se traduce a `_id` y `authorName` a `author.name`, que el término de búsqueda se escapa antes de entrar en un `$regex`, y que el mismo criteria produce el `where` anidado de TypeORM y las piezas de Mongo. Ninguna de esas afirmaciones necesita un contenedor para verificarse, porque ninguna de ellas es sobre la base de datos: son sobre lo que el contrato decide antes de llegar a ella.
+
+## Hablemos
+
+¿Preguntas, feedback o una visión distinta? Me encantaría leerte. Me encuentras aquí:
+
+- **GitHub** — [hgomezrobaina](https://github.com/hgomezrobaina)
+- **LinkedIn** — [Héctor Gómez Robaina](https://www.linkedin.com/in/hector-gomez-robaina)
+- **X** — [@hgomezrobaina](https://x.com/hgomezrobaina)

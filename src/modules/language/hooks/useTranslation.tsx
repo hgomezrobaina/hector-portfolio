@@ -1,5 +1,5 @@
 import { useContext } from 'react'
-import { LanguageConfig, InputTranslation, TranslationResult } from '../interfaces'
+import { LanguageConfig, InputTranslation, TranslationResult } from '../interfaces/translation'
 import { LanguageContext } from '../context/LanguageContext'
 
 export default function useTranslation<T>(input: InputTranslation<T, string>) {

@@ -1,6 +1,6 @@
 // eslint-disable-next-line import/named
 import { LegacyAnimationControls, motion } from 'framer-motion'
-import { useTranslation } from '../../../../modules/language/hooks'
+import useTranslation from '../../../../modules/language/hooks/useTranslation'
 import Buttons from './components/Buttons/Buttons';
 
 interface Props {

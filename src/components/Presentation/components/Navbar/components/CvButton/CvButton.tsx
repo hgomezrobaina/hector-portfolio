@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
-import { Download } from '../../../../../../modules/icon/components'
-import { useTranslation } from '../../../../../../modules/language/hooks'
+import Download from '../../../../../../modules/icon/components/Download'
+import useTranslation from '../../../../../../modules/language/hooks/useTranslation'
 // eslint-disable-next-line import/named
 import { LegacyAnimationControls, motion } from 'framer-motion'
 

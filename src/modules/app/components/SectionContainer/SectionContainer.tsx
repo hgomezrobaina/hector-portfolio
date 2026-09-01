@@ -1,4 +1,4 @@
-import { Section } from '../../../shared/components'
+import Section from '../../../shared/components/Section/Section'
 
 interface Props {
   children: React.ReactNode

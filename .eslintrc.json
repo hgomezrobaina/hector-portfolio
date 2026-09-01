@@ -30,6 +30,8 @@
   },
   "rules": {
     "linebreak-style": "off",
+    "lines-between-class-members": "off",
+    "@typescript-eslint/lines-between-class-members": "off",
     // Configure prettier
     "prettier/prettier": "off",
     // Disallow the `any` type.

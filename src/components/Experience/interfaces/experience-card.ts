@@ -1,10 +1,12 @@
+import { LanguageConfig } from '../../../modules/language/interfaces/translation'
+
 export interface ExperienceCard {
-  position: string
+  position: LanguageConfig
   limits: Limit
-  notes: string[]
+  notes: LanguageConfig[]
 }
 
 export interface Limit {
-  init: string
-  finish: string
+  init: LanguageConfig
+  finish: LanguageConfig
 }

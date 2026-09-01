@@ -1,3 +1,0 @@
-import { SOCIAL_MEDIA, EMAIL_URL } from './SOCIAL_MEDIA'
-
-export { SOCIAL_MEDIA, EMAIL_URL }

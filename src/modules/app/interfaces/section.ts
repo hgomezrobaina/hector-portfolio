@@ -1,5 +1,7 @@
+import { LanguageConfig } from '../../language/interfaces/translation'
+
 export interface Section {
-  title: string
+  title: LanguageConfig
   id: string
-  navLabel: string
+  navLabel: LanguageConfig
 }

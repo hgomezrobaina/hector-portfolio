@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useEffect, useState } from 'react'
-import { THEME } from '../constants'
+import { THEME } from '../constants/THEME'
 
 interface Props {
   theme: THEME

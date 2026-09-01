@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { IconProps } from '../../../../../../modules/icon/interfaces'
+import { IconProps } from '../../../../../../modules/icon/interfaces/icon'
 
 interface Props {
   icon: React.FC<IconProps>

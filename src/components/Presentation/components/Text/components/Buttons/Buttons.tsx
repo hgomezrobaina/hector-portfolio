@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
-import { ExternalLink } from '../../../../../../modules/app/components'
-import { SOCIAL_MEDIA } from '../../../../../../modules/shared/constants'
+import ExternalLink from '../../../../../../modules/app/components/ExtrernalLink/ExternalLink'
+import { SOCIAL_MEDIA } from '../../../../../../modules/shared/constants/SOCIAL_MEDIA'
 import ContactButton from './components/ContactButton/ContactButton';
 
 export default function Buttons() {

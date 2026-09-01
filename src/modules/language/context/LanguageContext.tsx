@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useMemo } from 'react'
-import { LANGUAGES } from '../constants'
+import { LANGUAGES } from '../constants/LANGUAGES'
 
 interface Props {
   language: LANGUAGES

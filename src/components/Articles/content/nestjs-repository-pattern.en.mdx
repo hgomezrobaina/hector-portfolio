@@ -1,0 +1,646 @@
+The canonical starting point for a NestJS module backed by TypeORM is the one the framework itself documents: the module declares `TypeOrmModule.forFeature([Order])` and the service receives the repository by injection.
+
+```ts
+@Injectable()
+export class OrderService {
+  constructor(
+    @InjectRepository(Order) private readonly repo: Repository<Order>,
+  ) {}
+}
+```
+
+From there the service has `find`, `findOne`, `save` and `delete` at hand, and can write its first business rule with no further scaffolding. It is the path of least friction and the best documented one, which is why it is the one most codebases are built on.
+
+The code that ends up living inside that service takes this shape:
+
+```ts
+async confirm(orderId: string): Promise<Order> {
+  const order = await this.repo.findOne({
+    where: { id: orderId, status: 'pending' },
+    relations: { lines: true },
+  });
+
+  if (!order) throw new NotFoundException('Order not found');
+  if (order.lines.length === 0) {
+    throw new BadRequestException('Cannot confirm an order without lines');
+  }
+
+  order.status = 'confirmed';
+  return this.repo.save(order);
+}
+```
+
+The method is correct: it does what it promises, it reads well, and it can carry years of production without an incident. What is worth analysing is not its behaviour but its **coupling surface**. There is a genuine business rule in there —_an order cannot be confirmed with no lines_— and it pays to measure how much knowledge of the persistence engine ended up embedded in it.
+
+The inventory is longer than it looks:
+
+- **The rule depends on how the row was loaded.** The invariant is evaluated over `order.lines`, and that collection only exists if the query asked for the relation explicitly. If `relations: { lines: true }` disappears in a refactor, `order.lines` arrives empty, the check fires when it should not, and the invariant is inverted without anything failing: no compile error, no exception, no trace. The rule's correctness is a property of the query, not of the rule.
+- **The business condition is expressed in table vocabulary.** "Pending" is not a domain concept in this code; it is the string `'pending'` compared against a column inside a `where` object.
+- **Control flow is dictated by the ORM's API.** The first `if` exists because `findOne` returns `null`; that is a TypeORM decision, not a business one.
+- **Write semantics are implicit.** `save` decides on its own whether the operation is an `INSERT` or an `UPDATE` based on the state of the primary key. The service inherits that ambiguity.
+- **The business class is the schema definition.** `Order` —where the total calculation and the state transitions will eventually live— is the same class carrying the `@Column` decorators that describe the table.
+
+The first four are coupling nuisances: awkward, but local and reversible. The fifth is of another kind. It is not a consequence of how this method was written, but of a structural decision —that the business model and the persistence model be the same object— which the project adopted without deliberating it, by following the documented path.
+
+That coupling has no observable cost as long as the module stays on single-entity operations over a single table. It becomes measurable when three conditions show up, and almost every real domain ends up meeting them: that the entity accumulates invariants of its own, that a query with business meaning is needed from more than one place, and that a rule has to be verified without depending on the database.
+
+Each of the three produces a distinct cost, and they are worth examining separately.
+
+## Three costs of the coupling
+
+### 1. The business entity is the table definition
+
+The `Order` class serves two consumers with incompatible requirements. The business needs an object that can only exist in valid states and that expresses its concepts precisely. The ORM needs an object that mirrors the row and that it can build knowing nothing about the business. When both consumers share the same class, this is the result:
+
+```ts
+@Entity('order')
+export class Order {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  customerId: string;
+
+  @ManyToOne(() => Customer)
+  customer: Customer;
+
+  @Column({ type: 'varchar', default: 'pending' })
+  status: string;
+
+  @Column({ type: 'numeric', precision: 12, scale: 2 })
+  total: string;
+
+  @OneToMany(() => OrderLine, (line) => line.order)
+  lines: OrderLine[];
+
+  @CreateDateColumn() createdAt: Date;
+  @UpdateDateColumn() updatedAt: Date;
+  @DeleteDateColumn() deletedAt: Date | null;
+}
+```
+
+The contamination runs in both directions, and there is a third consequence that is not about types but about construction.
+
+**From persistence into the domain.** `createdAt`, `updatedAt` and `deletedAt` are infrastructure requirements —auditing and soft deletion— that no business rule ever consults, yet they are part of the type the whole module works with. More to the point: `customerId` and `customer` are two representations of the same fact living side by side in the same object, with no guarantee that they are in sync. And `customer` is declared as `Customer`, not as `Customer | undefined`, even though its value is `undefined` whenever the query did not ask for the relation. The type asserts something the value does not honour, and `strictNullChecks` cannot catch it because the property is declared as present.
+
+**From the domain into persistence.** `total` is typed as `string` because the PostgreSQL driver returns `numeric` columns as strings so precision is not lost in JavaScript's `number`. That is a correct decision by the driver and a leak for the business: an order's amount is a number, and here any calculation on it requires converting first, in every place where it is calculated. Fixing it inside the class itself is possible with a column `transformer`, but that leaves the representation of a business concept conditioned on what the ORM knows how to serialise.
+
+**The constructor cannot demand anything.** TypeORM's documentation states it explicitly: an entity's constructor arguments must be optional, because the ORM instantiates the class when materialising each row and knows nothing about those arguments. The consequence is that the class cannot guarantee its own invariant at construction time. `new Order()` —no customer, no lines, no status— is valid for the compiler and for the ORM. The invariant "a confirmed order has at least one line" cannot be a property of the type; it can only be a check repeated in every method that needs it, which is exactly what `confirm()` was doing in the example above. The class is structurally incapable of sustaining an always-valid state.
+
+### 2. Queries have no name
+
+"A customer's pending orders" is a business concept: it has a definition, and that definition can change. In the code it does not exist as a unit. It exists as an object literal replicated in every place that needs it:
+
+```ts
+// order.service.ts
+where: { customerId, status: 'pending' }
+
+// notification.service.ts
+where: { customerId, status: In(['pending', 'awaiting_payment']) }
+
+// report.service.ts
+where: { customerId, status: 'pending' }, relations: { lines: true }
+```
+
+All three claim to express the same concept and all three diverge. None is marked as canonical, so reading the code there is no way to tell which definition is the correct one, and the compiler accepts all three: the divergence is semantic, not a type error. The third one, on top of that, returns entities of a different shape, because `relations` changes what arrives populated; a rule that depends on `order.lines` behaves differently depending on the entry point.
+
+The cost lands when the definition of "pending" changes: it is proportional to the number of copies, and there is no reliable procedure for enumerating them —searching for the literal `'pending'` fails the moment someone extracted it into a constant or received it as a parameter—.
+
+### 3. The rule cannot be verified without a database
+
+Running a test for "you cannot reserve more units than there are in stock" takes four things that have nothing to do with the rule: a PostgreSQL instance, a migrated schema, fixtures that leave the row in the starting state, and a mechanism for isolation between cases.
+
+The test then covers far more than it intends to. When it fails, the cause may be in the rule, in the column mapping, in a pending migration or in the state another case left behind: the signal does not localise the defect. And the cycle moves from the order of milliseconds to the order of seconds, multiplied by the number of cases —a stock rule has plenty: the exact boundary, one over, zero on hand, two concurrent reservations—.
+
+The second-order effect is the expensive one. A slow suite is run less often, and the edge cases that are awkward to set up tend not to get written: the cost is not only in the tests that take long, but in the ones that never come to exist.
+
+---
+
+The three costs share one origin: there is no boundary between the object that expresses the business and the object that describes the row. Before proposing one, it is worth reviewing what the ecosystem offers, because the available tools do not all attack the same problem.
+
+## State of the art: what each option solves
+
+**NestJS's documented path.** `@InjectRepository(Order)` injects a `Repository<Order>` built by the `DataSource`. What it solves is the **wiring**: the connection, the pool, the lifecycle and the injection. It is a complete solution to that problem, and it does not claim to be anything else. On the ownership of the model it takes no position: the type it hands you is the same one that defines the table.
+
+**Active Record.** TypeORM offers the alternative of extending `BaseEntity`, so the class acquires its own persistence operations:
+
+```ts
+const order = await Order.findOneBy({ id });
+await order.save();
+```
+
+It removes the ceremony of injection and, in exchange, takes the coupling as far as it can go: the business class not only describes the table, it also knows how to connect to it. The three costs above remain, plus the impossibility of instantiating the class outside a context with an initialised `DataSource`.
+
+**Custom repositories.** This is TypeORM's answer to cost #2: giving the named query a place of its own, by extending the repository instance.
+
+```ts
+const OrderRepository = dataSource.getRepository(Order).extend({
+  findPendingByCustomer(customerId: string) {
+    return this.findBy({ customerId, status: 'pending' });
+  },
+});
+```
+
+With this the query comes to have a single owner, which was the problem in cost #2. The other two are untouched: the object is built from the `DataSource` rather than by injection —which forces registering it as a provider with a factory of its own— and, above all, the type its methods return is still the persistence model.
+
+**MikroORM.** It is the option that goes furthest out of the box, and that deserves saying without qualification: it implements Data Mapper, Unit of Work and Identity Map natively. The `EntityManager` tracks loaded objects, resolves by identity —two lookups by the same primary key return the same instance— and groups pending changes into an implicit transaction when `flush()` is called. In other words, it solves by design the problem that takes up the longest section of this article. What it does not solve is cost #1: its entities are still decorated classes that describe the table, so the boundary between the business model and the persistence model remains the job of whoever writes the code.
+
+**Prisma.** There are no repositories or entities in the earlier sense: you inject the client and the generated types _are_ the rows, flat data structures with no behaviour. The effect on cost #1 is ambivalent: there is no business class that can be contaminated, because there is no class at all, so any domain model is born separate. In exchange, cost #2 gets worse —there is no natural place for named queries to live— and the coupling moves from the type to the call site: the service invokes the client directly.
+
+**DDD and CQRS templates.** Hexagonal boilerplates and `@nestjs/cqrs` do show the port-and-adapter structure, and in that sense they point at the right problem. The limitation is one of scope: most stop at a demonstration CRUD over a single entity, where the pattern is trivially applicable. The three questions that show up from the third module onwards —how two different repositories share a transaction, who translates between entity and model, and how the implementation is substituted in a test— tend to fall outside the example.
+
+Laid out in a table against the three costs, the split looks like this:
+
+| Tool | 1. The entity is the table | 2. Unnamed queries | 3. Verifying without a database |
+| --- | --- | --- | --- |
+| Nest's documented path | Does not address it | Does not address it | Does not address it |
+| Active Record | Makes it worse: the class also knows how to connect | Does not address it | Does not address it |
+| Extended repositories (`.extend()`) | Does not address it: returns the model | **Solved**: the query has an owner | Does not address it |
+| MikroORM | Does not address it: decorated entities | **Solved**: its own `EntityRepository` | Partial: the usual answer is running against in-memory SQLite, which is still a database |
+| Prisma | Neutral by absence: no business class to contaminate | Makes it worse: nowhere to put them | Does not address it |
+| DDD/CQRS templates | **Solved** in the example | **Solved** in the example | **Solved** in the example |
+
+> **Note:** the three marks in the last row carry the same caveat, and it is a large one: they are solved over a single-entity CRUD. There is also a column the table does not have, because it is not one of the three initial costs but what shows up right after them —the transaction shared across several repositories—, and there only MikroORM brings an out-of-the-box answer. The table measures what each tool addresses, not how it behaves once the module grows.
+
+The summary is that the ecosystem has the wiring solved, has transaction management solved in at least one implementation, and the available literature on ports and adapters rarely gets past the `interface` and its `implements`. The gap is not in the definition of the pattern, but in how it behaves under the conditions that make it necessary.
+
+## The justification worth discarding
+
+The reason most often given for introducing repositories is infrastructure independence: if the domain only knows an interface, changing ORM does not force you to touch it. The argument is logically sound; what is worth measuring is the size of the benefit it promises.
+
+If the migration does happen, the adapters are rewritten entirely, the shared-transaction mechanism is rewritten too —it depends on the specific `EntityManager` and `QueryRunner`— and the persistence models are redone from scratch. The only thing that survives intact is the port: ten lines with no dependencies, the cheapest file in the module to rewrite. The pattern **localises** the migration, it does not make it cheap: what is saved is the cheap part. And that benefit is collected once, in an event that in most projects never arrives, while the cost —an interface, a mapper and a separate model per entity— is paid on every entity added.
+
+If that were the main benefit, the reasonable conclusion would be not to apply the pattern. It is worth discarding explicitly because, while it stands, it occupies the place of the useful question: what does the project gain today. And that answer is the three inverses of the costs above —an entity that can demand its invariants, a query with a single owner, a rule verifiable in milliseconds—, which are collected on every working day and not in a hypothetical migration.
+
+## The thesis
+
+The original definition of the pattern, in the Patterns of Enterprise Application Architecture catalogue, predates this debate and mentions portability nowhere:
+
+> "Mediates between the domain and data mapping layers using a collection-like interface for accessing domain objects."
+
+The operative term there is _collection-like_. Fowler develops it in the next line: objects are added to and removed from the repository as they would be from a plain collection, and the mapping code the repository encapsulates carries out the appropriate operations behind the scenes. A collection has a membership interface —what is inside, how something is found, what gets added— and no notion of storage whatsoever.
+
+From there comes the formulation that carries the rest of this article:
+
+> **A repository is not a layer on top of the database: it is a collection of your domain that happens to live in one.**
+
+The difference between the two readings is not rhetorical; it determines different things when writing the code. If the repository is a layer on top of the database, its methods are named after what the engine does and its types are the row's, because the goal is to give orderly access to the table. If it is a collection of domain objects, its methods are named after what the business looks for and its types are the domain's, because storage is an implementation detail that stays on the other side.
+
+Two pieces follow from that formulation, and they take up the rest of the article:
+
+- The **port** is a TypeScript interface with no decorators, no Nest dependencies and no ORM dependencies, written in business vocabulary, whose input and output types are domain entities and never persistence models.
+- The **adapter** is the only piece in the module that knows TypeORM, and its job is to translate in both directions.
+
+The rest —how two repositories share a transaction, how the implementation is substituted in a test— are consequences of those two definitions, and that is where the pattern is put to the test.
+
+## The minimum contract: the port
+
+The port is the whole file, not an excerpt:
+
+```ts
+// src/order/domain/repositories/order.repository.ts
+import { Order } from '../entities/order.entity';
+
+export interface OrderRepository {
+  create(order: Order): Promise<void>;
+  findById(id: string): Promise<Order | null>;
+  findByReference(reference: string): Promise<Order | null>;
+  findPendingByCustomer(customerId: string): Promise<Order[]>;
+  update(order: Order): Promise<void>;
+}
+```
+
+It has a single import, and it points at the domain itself. There is nothing from `@nestjs/common`, nothing from `typeorm`, and no decorators; the file compiles with the project's dependencies uninstalled. That is a checkable property, and it is what defines the boundary: whatever this file does not mention is what the domain cannot know.
+
+The input and output types are `Order`, the entity, and not `OrderModel`. That is the difference with the extended repositories from the previous section: `.extend()` also let you name the query, but it returned the row. Naming without changing the type solves half the problem.
+
+`findPendingByCustomer` is cost #2 in its solved form. The definition of "pending" comes to have a single place where it lives, and modifying it means modifying one method whose change the compiler propagates to every caller. The comparison with the three divergent literals earlier is direct: that was a coincidence between copies, this is a declaration.
+
+Two observations about what the port does not have. There is no generic method —no `findAll(options)`, no `query()`, nothing that takes arbitrary criteria—: every entry answers a concrete need, and the port grows on business demand rather than in anticipation. And lookups return `Order | null`: the port reports the absence, it does not decide what to do about it. Turning "does not exist" into an error —a domain exception, a 404— is the caller's job, because the caller is the one who knows the context.
+
+## The entity is not the table
+
+Cost #1 is solved by splitting into three files what used to be one. Each has a single consumer and therefore a single set of requirements.
+
+**The domain entity** is no longer instantiated by the ORM, and that is exactly what gives it back the ability to demand:
+
+```ts
+// src/order/domain/entities/order.entity.ts
+interface Props {
+  id: string;
+  customerId: string;
+  reference: string;
+  status: OrderStatus;
+  lines: OrderLine[];
+}
+
+export class Order {
+  readonly id: string;
+  readonly customerId: string;
+  readonly reference: string;
+  status: OrderStatus;
+  lines: OrderLine[];
+
+  constructor(props: Props) {
+    this.id = props.id;
+    this.customerId = props.customerId;
+    this.reference = props.reference;
+    this.status = props.status;
+    this.lines = props.lines;
+  }
+
+  confirm(): void {
+    if (this.lines.length === 0) {
+      throw new EmptyOrderException(this.reference);
+    }
+    this.status = OrderStatus.CONFIRMED;
+  }
+
+  total(): number {
+    return this.lines.reduce((sum, line) => sum + line.subtotal(), 0);
+  }
+}
+```
+
+The constructor has required parameters, which is precisely what TypeORM's documentation forbids in an entity of its own. The class has no `createdAt`, no `deletedAt`, and no raw FK living next to its relation; it has the data the business needs and the methods that operate on it. The invariant in `confirm()` is still a check, but now it sits in the only place that can change the state, instead of being repeated in every service that confirms an order.
+
+**The persistence model** is the decorated class from the first cost under another name, and with a different expectation attached: it is no longer expected to hold rules.
+
+```ts
+// src/order/infrastructure/typeorm/models/order.model.ts
+@Entity('order')
+export class OrderModel {
+  @PrimaryColumn('varchar', { length: 26 }) id: string;
+  @Column() customerId: string;
+  @Column() reference: string;
+
+  @Column({ type: 'enum', enum: OrderStatus })
+  status: OrderStatus;
+
+  @OneToMany(() => OrderLineModel, (line) => line.order, { cascade: true })
+  lines: OrderLineModel[];
+
+  @CreateDateColumn() createdAt: Date;
+  @DeleteDateColumn() deletedAt: Date | null;
+}
+```
+
+Being anemic stopped being a flaw: it describes a row, and a row has no behaviour. The audit columns, the raw FKs and the driver-imposed types live here without contaminating anything, because their only consumer is the ORM.
+
+**The mapper** is the translation, and it concentrates decisions that used to be scattered:
+
+```ts
+// src/order/infrastructure/typeorm/mappers/order.mapper.ts
+export class OrderMapper {
+  static toDomain(model: OrderModel): Order {
+    return new Order({
+      id: model.id,
+      customerId: model.customerId,
+      reference: model.reference,
+      status: model.status,
+      lines: OrderLineMapper.toDomainList(model.lines ?? []),
+    });
+  }
+
+  static toDomainList(models: OrderModel[]): Order[] {
+    return models.map((model) => this.toDomain(model));
+  }
+
+  static toModel(entity: Order): OrderModel {
+    const model = new OrderModel();
+    model.id = entity.id;
+    model.customerId = entity.customerId;
+    model.reference = entity.reference;
+    model.status = entity.status;
+    model.lines = entity.lines.map(OrderLineMapper.toModel);
+    return model;
+  }
+}
+```
+
+Every row entering the domain goes through `toDomain`, so the conversions that used to be scattered across the services now have a single location: the `numeric` the driver hands over as a string is converted to `number`, inside `OrderLineMapper`, over each line's price.
+
+`status`, on the other hand, is not converted: it is assigned. It is worth pausing on why, because the alternative is a common mistake. If the column were a free `varchar`, the type of `model.status` would be `string` and the mapper would have to resolve the mismatch somehow: with `model.status as OrderStatus`, which is an assertion and checks nothing, or with a type guard validating on every read. The second option is correct but it is paying at runtime, row by row, for a guarantee the schema can give for free. By declaring the column as an `enum`, the constraint lives in the database, `model.status` is already of type `OrderStatus`, and there is nothing to assert and nothing to check.
+
+The difference with `customer: Customer` from the first cost is exactly that. There the type asserted something the value could fail to honour; here the type is true because there is a constraint behind it holding it up. A type is only worth as much as the guarantee backing it, and validating in the mapper against a schema that does not constrain is treating the symptom.
+
+> **Note:** the `model.lines ?? []` is the problem from the opening of this article coming back. If the query did not ask for the relation, the mapper builds an order with no lines and the invariant in `confirm()` is inverted again without anything failing. The difference from the starting point is not that the risk disappears: it is that the query is now written in a single place —the adapter—, so the guarantee is established once instead of depending on every caller.
+
+The cost deserves stating in the same place as the benefit: it is three files per entity instead of one, and the mapper has to be maintained by hand. The compiler helps in one direction only —a new required field in `Props` breaks `toDomain` until you add it—, but a new column in the model forces nothing, so an incomplete mapping is an error the tooling does not catch.
+
+## The adapter: the only piece that knows the ORM
+
+The adapter implements the port and concentrates everything the domain stopped knowing:
+
+```ts
+// src/order/infrastructure/typeorm/repositories/typeorm-order.repository.ts
+@Injectable()
+export class TypeOrmOrderRepository implements OrderRepository {
+  constructor(
+    @InjectRepository(OrderModel)
+    private readonly repository: Repository<OrderModel>,
+  ) {}
+
+  async create(order: Order): Promise<void> {
+    await this.repository.save(OrderMapper.toModel(order));
+  }
+
+  async findById(id: string): Promise<Order | null> {
+    const model = await this.repository.findOne({
+      where: { id },
+      relations: { lines: true },
+    });
+    return model ? OrderMapper.toDomain(model) : null;
+  }
+
+  async findPendingByCustomer(customerId: string): Promise<Order[]> {
+    const models = await this.repository.find({
+      where: { customerId, status: OrderStatus.PENDING },
+      relations: { lines: true },
+    });
+    return OrderMapper.toDomainList(models);
+  }
+
+  async update(order: Order): Promise<void> {
+    await this.repository.save(OrderMapper.toModel(order));
+  }
+}
+```
+
+`@InjectRepository(OrderModel)` is the very line this article started with. It did not disappear and it was not replaced by anything: it moved. The pattern does not reject NestJS's documented path, it confines it to the class where that knowledge is legitimate.
+
+Every method has the same shape —query and translation— and none contains a business decision. That gives a review criterion that needs no debate: if an `if` that inspects an order's state to decide something shows up here, it is in the wrong file.
+
+`relations: { lines: true }` appears twice, and that repetition is the residue of what, at the opening of the article, was scattered across every service. It is still repetition, but it is local now: it fits on one screen and can be audited by reading one file.
+
+`create` and `update` are both resolved with `save`, which does what it always did —decide between insert and update based on the primary key—. The difference is where that ambiguity lives: the port declares two operations because the business distinguishes creating from updating, and that the implementation resolves both with the same call is a detail that need not surface in the name.
+
+### The wiring
+
+A TypeScript interface does not exist at runtime, so it cannot serve as an injection token. An explicit one is needed, declared next to the port:
+
+```ts
+// src/order/domain/repositories/order.repository.ts
+export const ORDER_REPOSITORY = Symbol('OrderRepository');
+```
+
+And the module associates the token with the implementation:
+
+```ts
+// src/order/order.module.ts
+@Module({
+  imports: [TypeOrmModule.forFeature([OrderModel, OrderLineModel])],
+  providers: [
+    ConfirmOrderService,
+    { provide: ORDER_REPOSITORY, useClass: TypeOrmOrderRepository },
+  ],
+})
+export class OrderModule {}
+```
+
+This line is where it is decided which implementation the domain receives, and it is the only one that would need touching to swap it. It is also the reason the consumer needs an explicit `@Inject`, which was not necessary when it injected a class.
+
+### The service, again
+
+With the pieces in place, the method from the beginning of the article ends up like this:
+
+```ts
+@Injectable()
+export class ConfirmOrderService {
+  constructor(
+    @Inject(ORDER_REPOSITORY)
+    private readonly orders: OrderRepository,
+  ) {}
+
+  async execute(orderId: string): Promise<void> {
+    const order = await this.orders.findById(orderId);
+    if (!order) throw new OrderNotFoundException(orderId);
+
+    order.confirm();
+    await this.orders.update(order);
+  }
+}
+```
+
+The behaviour is the same as at the start. What changed is the distribution of knowledge, and it is worth going back over the opening inventory to check it point by point: there is no `where` here, no `relations` that a rule's correctness depends on, no `save` with its ambiguity, and no table vocabulary. The lines invariant is no longer in this file: it is in `order.confirm()`, the only place capable of changing the order's state.
+
+One absence `if` remains, and it stays deliberately. It is not a response to `findOne` returning `null`, but to the port declaring `Promise<Order | null>` as part of its contract: the repository reports that the order is not there, and this service decides that this is a business error. The check is the same; its cause is not.
+
+Up to here the pattern holds on one entity and one operation. The real test arrives when the operation touches two.
+
+## The shared transaction
+
+Confirming an order also draws down stock — the rule from the third cost enters the picture. The service now uses two ports:
+
+```ts
+async execute(orderId: string): Promise<void> {
+  const order = await this.orders.findById(orderId);
+  if (!order) throw new OrderNotFoundException(orderId);
+
+  order.confirm();
+
+  for (const line of order.lines) {
+    const stock = await this.inventory.findByProduct(line.productId);
+    if (!stock) throw new ProductNotFoundException(line.productId);
+    stock.reserve(line.quantity); // throws InsufficientStockException if it does not add up
+    await this.inventory.update(stock);
+  }
+
+  await this.orders.update(order);
+}
+```
+
+The writes are several and the requirement is one: either all of them land or none does. If `reserve` throws on the order's third line, the two previous reservations cannot stay written.
+
+The problem has a precise shape. In TypeORM, a transaction is a specific `EntityManager` —the one belonging to the `QueryRunner` that opened it—, and every query that wants to take part must run through it. The transaction is opened at the edge, in the controller, because the use case is what defines the scope of atomicity. But the queries run two layers below, in the adapters. That manager has to travel from the edge down to the adapters, and there are only two routes.
+
+The first is passing it as a parameter. What it forces is immediately visible:
+
+```ts
+export interface OrderRepository {
+  findById(id: string, manager?: EntityManager): Promise<Order | null>;
+  update(order: Order, manager?: EntityManager): Promise<void>;
+  // ...
+}
+```
+
+The port —the file that compiled without TypeORM— now imports `EntityManager`, and every domain signature carries a parameter the business cannot explain. The contamination the pattern showed out the door comes back through the signature, and not into one file: into every method of every port that takes part in any transaction.
+
+The second route is for the manager to travel not through the signatures but through the execution context. Node has a standard mechanism for exactly this: `AsyncLocalStorage`, a store bound to the async chain in flight. Anything running inside `storage.run(value, fn)` —at any depth of `await`— can read `value` with `storage.getStore()`, without any intermediary carrying it. It is the same mechanism used to propagate request context for logging, and also the one libraries like `typeorm-transactional` package up; here it is used directly, because it fits in a short file and it is worth seeing what is inside.
+
+The piece that encapsulates it is an executor:
+
+```ts
+// src/shared/infrastructure/typeorm/transaction.executor.ts
+@Injectable()
+export class TransactionExecutor {
+  private static readonly storage = new AsyncLocalStorage<EntityManager>();
+
+  constructor(private readonly dataSource: DataSource) {}
+
+  async execute<T>(work: () => Promise<T>): Promise<T> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      return await TransactionExecutor.storage.run(
+        queryRunner.manager,
+        async () => {
+          const result = await work();
+          await queryRunner.commitTransaction();
+          return result;
+        },
+      );
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  getManagerIfActive(): EntityManager | null {
+    return TransactionExecutor.storage.getStore() ?? null;
+  }
+}
+```
+
+`execute` opens the `QueryRunner`, runs the work inside `storage.run` with the transactional manager as the value, commits if the work completed and rolls back if it threw. The domain exception thereby acquires a second function without knowing it: `InsufficientStockException` was the way to reject an invalid reservation, and now it is also the transaction's abort signal. The business error and the rollback end up unified without either side knowing about the other.
+
+The counterpart lives in the adapter, and it is three lines:
+
+```ts
+private getRepository(): Repository<OrderModel> {
+  const manager = this.transactionExecutor.getManagerIfActive();
+  return manager ? manager.getRepository(OrderModel) : this.repository;
+}
+```
+
+Every adapter method queries through `this.getRepository()` instead of `this.repository`. If there is a transaction active in the context, it takes part in it; if there is not, it uses the injected repository and the query runs standalone, as before. The adapter works the same inside and outside a transaction, and it is the same class in both cases.
+
+With both pieces in place, the edge looks like this:
+
+```ts
+@Post(':id/confirm')
+async confirm(@Param('id') id: string): Promise<void> {
+  return this.transactionExecutor.execute(() =>
+    this.confirmOrder.execute(id),
+  );
+}
+```
+
+And this is the result the section had to demonstrate: the domain service performs all its writes —one per order line, plus the order's own— atomically and **contains no reference to the transaction at all**. It takes no manager, imports no TypeORM, and does not know the controller wrapped it in anything. The port still compiles with no dependencies. Atomicity was decided at the edge, the mechanism lives in infrastructure, and the domain ended up between the two without learning about either.
+
+> **Note:** the agreement between the executor and the adapters is invisible to the compiler. Nothing in the `OrderRepository` type forces an implementation to consult `getManagerIfActive()`: an adapter using `this.repository` directly compiles just the same, runs outside the transaction, and its writes survive the rollback. It is the most fragile point of the mechanism —a team convention, not a typed contract— and it is worth protecting where you can: in code review, and in the integration test that verifies a failure reverts every write.
+
+## Two ways to wire the port
+
+The token-based wiring from the adapter section is the canonical form in Nest, but not the only one compatible with the pattern. The alternative is not registering the port in the container at all: the module registers the concrete classes, and the controller —which receives them by injection— composes the domain service by hand in each endpoint:
+
+```ts
+@Post(':id/confirm')
+async confirm(@Param('id') id: string): Promise<void> {
+  return this.transactionExecutor.execute(() => {
+    const confirmOrder = new ConfirmOrderService(
+      this.orderRepository,
+      this.inventoryRepository,
+    );
+    return confirmOrder.execute(id);
+  });
+}
+```
+
+A `new` inside a framework built around the container raises suspicion, so it is worth fixing the invariant both forms share: the `ConfirmOrderService` constructor still declares `OrderRepository`, the interface, and the compiler checks at the `new` exactly what it was checking at the `useClass`. The pattern's boundary is respected identically; the only thing that changes is who performs the composition. As a side effect, the domain service loses its last two decorators —`@Injectable`, `@Inject`— and the `domain/` folder ends up with not a single framework import; in exchange, swapping the implementation stops being a one-line change and the composition is repeated per endpoint.
+
+For this article that is enough: the pattern works the same with either wiring, and everything above —port, adapter, transaction— is independent of which one you pick.
+
+> **Note:** manual composition is not an isolated decision: it is part of a way of structuring the project —use cases as classes, composition at the edge, what exactly the application layer does— that needs more room than it deserves here. That is for an article of its own.
+
+## The test that is now possible
+
+Cost #3 demanded four things unrelated to the rule in order to verify it: the database, the schema, the fixtures and the isolation. With the port in between, the test implementation is a class that implements it with stubs:
+
+```ts
+// tests/unit/order/mocks/mock-inventory-repository.ts
+export class MockInventoryRepository implements InventoryRepository {
+  findByProduct = vi.fn<(productId: string) => Promise<Inventory | null>>();
+  update = vi.fn<(inventory: Inventory) => Promise<void>>();
+}
+```
+
+Its twin for `OrderRepository` has the same shape, and the stock rule's test reads in full like this:
+
+```ts
+it('rejects the confirmation when stock is insufficient', async () => {
+  const orders = new MockOrderRepository();
+  const inventory = new MockInventoryRepository();
+
+  const order = new Order({
+    id: 'order-1',
+    customerId: 'customer-1',
+    reference: 'ORD-001',
+    status: OrderStatus.PENDING,
+    lines: [
+      new OrderLine({
+        id: 'line-1',
+        productId: 'product-1',
+        quantity: 5,
+        unitPrice: 100,
+      }),
+    ],
+  });
+  orders.findById.mockResolvedValue(order);
+  inventory.findByProduct.mockResolvedValue(
+    new Inventory({ productId: 'product-1', available: 3 }),
+  );
+
+  const service = new ConfirmOrderService(orders, inventory);
+
+  await expect(service.execute('order-1')).rejects.toThrow(InsufficientStockException);
+  expect(inventory.update).not.toHaveBeenCalled();
+  expect(orders.update).not.toHaveBeenCalled();
+});
+```
+
+Not one of the four things is left: the starting state is built by calling constructors —the same ones that already demand their parameters—, and the test runs in milliseconds. The edge cases the third cost flagged as the ones that "tend not to get written" are now copies of this test with one number changed: the exact boundary, zero on hand, one over. Their marginal cost is close to zero, which was what it took for them to exist at all.
+
+Two details carry the weight. The `implements InventoryRepository` is not decorative: when the port grows a method, every mock stops compiling until it is updated — the contract keeps the test doubles in sync with no extra discipline. And the last two assertions verify what cost #3 could not even express with the database in the way: that the rejection happens **before** any write.
+
+What this test does not cover is worth saying too: not the adapter's SQL, not the mapper, not the transaction. Those pieces are verified with integration tests, which still need the database — but there are few of them now and they test infrastructure, while the rules, which are many, are tested here.
+
+## Two honest caveats
+
+**The executor's scope can propagate.** The `TransactionExecutor` in this article is a singleton and can stay one: its only state, the `AsyncLocalStorage`, is static. But in production that class tends to accumulate per-request responsibilities —auditing is the typical one: recording which user ran the transaction— and the day it declares `Scope.REQUEST` for that, the scope propagates transitively: every adapter injecting it becomes request-scoped, and so does anything injecting one of those adapters. The measurable consequence shows up in cron jobs: `@nestjs/schedule` does not register `@Cron` handlers defined in non-static providers — it leaves a WARN at boot and the job simply never runs. It is a silent failure of the expensive kind: nothing throws, nothing retries, and the signal is the absence of something. There are two known ways out: resolving the repository inside the handler with `ModuleRef` instead of injecting it through the constructor, or keeping the executor free of per-request dependencies so the propagation never starts.
+
+**This is not a Unit of Work.** The mechanism in the transaction section shares one transaction between repositories, and that is all it does. There is no identity map: two `findById` calls for the same order within the same transaction return two distinct objects in memory, and if both are modified and persisted, the last write silently overwrites the first. There is no deferred writing either: each `update` runs its SQL when called, not in a final `flush`. MikroORM offers both out of the box, as noted in the state of the art; with this pattern, the equivalent discipline is a design one: each use case loads an entity once and passes the instance around, instead of looking it up again.
+
+## Who this is for (and who it is not for)
+
+The pattern's total cost was spread across the article and is worth adding up here: three files and a mapper per entity, a transaction executor, an untyped agreement between executor and adapters, and two operational caveats. That cost is paid on every new entity, so the adoption question is which projects see a return that outweighs it.
+
+There are projects where it does not. A single-module CRUD, an MVP looking for a market, an internal back office where the rules are "save whatever arrived": there the three coupling costs never materialise —there are no invariants to protect, there are no repeated queries because there are few queries, and rule tests do not exist because there are barely any rules—. In those projects, `@InjectRepository` straight into the service is the correct answer, and this pattern is ceremony with no return.
+
+The conditions that flip the balance are the ones this article has been using from the start: real invariants —money, states, stock—, writes that cross several tables and must be atomic, rules you want verified in milliseconds, and a team large enough that "where does this query live" needs an answer that does not depend on who wrote it. With two or more of those present, every piece of the pattern is paying for something concrete; with none, all of them are dead weight.
+
+For the module sitting on the fence, the rule of thumb that sums up the article fits in one line: **if someone from the business would understand the method name, it belongs to the port; if it describes what the engine does, it belongs to the adapter.**
+
+## The code
+
+All of the above lives in a runnable project: **[nestjs-repository-pattern](https://github.com/hgomezrobaina/nestjs-repository-pattern)**.
+
+A single use case —confirming an order, which draws down stock—, because it is the minimum that forces the interesting problem into the open: two repositories writing inside the same transaction without the domain knowing. It comes up with `docker compose up -d && npm run dev`, and the ten business-rule tests run in seven milliseconds with no database.
+
+---
+
+That leaves the closing, which is the thesis seen from the end. The ORM and this pattern are not competing, because they do not answer the same question: TypeORM solves _how to talk to the database_ —connections, SQL, row mapping—, and it solves it well. The pattern solves _where the business knowledge lives and how much it knows about the database_ — which is a question the ORM has no reason to answer. They are different layers. The collection of your domain needs both: one to be a collection, the other to live somewhere.
+
+---
+
+## Let's talk
+
+Questions, feedback, or a different take? I'd love to hear from you. You can find me here:
+
+- **GitHub** — [hgomezrobaina](https://github.com/hgomezrobaina)
+- **LinkedIn** — [Héctor Gómez Robaina](https://www.linkedin.com/in/hector-gomez-robaina)
+- **X** — [@hgomezrobaina](https://x.com/hgomezrobaina)

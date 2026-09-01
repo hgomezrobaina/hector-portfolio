@@ -1,5 +1,7 @@
 import { clsx } from 'clsx'
-import { Close, Config, Sections } from './components'
+import Close from './components/Close/Close'
+import Config from './components/Config/Config'
+import Sections from './components/Sections/Sections'
 
 interface Props {
   handleChangeOpenMenu: () => void

@@ -1,8 +1,8 @@
 // eslint-disable-next-line import/named
 import { LegacyAnimationControls } from 'framer-motion'
-import { Section } from '../../modules/shared/components'
-import { ArrowRight } from '../../modules/icon/components'
-import { usePresentation } from './hooks'
+import Section from '../../modules/shared/components/Section/Section'
+import ArrowRight from '../../modules/icon/components/ArrowRight'
+import usePresentation from './hooks/usePresentation'
 import Navbar from './components/Navbar/Navbar';
 import Text from './components/Text/Text';
 import Image from './components/Image/Image';

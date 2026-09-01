@@ -1,5 +1,5 @@
-import { useTranslationComponent } from '../../../../../../modules/language/hooks'
-import { Strong } from './components'
+import useTranslationComponent from '../../../../../../modules/language/hooks/useTranslationComponent'
+import Strong from './components/Strong/Strong'
 
 export default function Content() {
   const { FIRST, SECOND, THIRD } = useTranslationComponent({
