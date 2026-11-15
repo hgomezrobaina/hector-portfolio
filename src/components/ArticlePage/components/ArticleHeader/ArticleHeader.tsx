@@ -1,8 +1,8 @@
 import NextImage from 'next/image'
-import { LANGUAGES } from '../../../../modules/language/constants/LANGUAGES'
+import { LANGUAGES } from '../../../../modules/language/constants/language'
 import useLanguage from '../../../../modules/language/hooks/useLanguage'
 import useTranslation from '../../../../modules/language/hooks/useTranslation'
-import { AUTHOR_NAME } from '../../../../modules/app/constants/METADATA'
+import { AUTHOR_NAME } from '../../../../modules/app/constants/metadata'
 import { Article } from '../../../Articles/domain/article'
 
 interface Props {

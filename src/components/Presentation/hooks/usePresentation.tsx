@@ -1,4 +1,4 @@
-import { LANGUAGES } from '../../../modules/language/constants/LANGUAGES'
+import { LANGUAGES } from '../../../modules/language/constants/language'
 import useLanguage from '../../../modules/language/hooks/useLanguage'
 
 export default function usePresentation() {

@@ -1,9 +1,9 @@
 import { Article } from '../../../components/Articles/domain/article'
 import { getArticlePath } from '../../../components/Articles/utils/get-article'
-import { LANGUAGES } from '../../language/constants/LANGUAGES'
-import { GITHUB_URL, LINKEDIN_URL, TWITTER_URL } from '../../shared/constants/SOCIAL_MEDIA'
-import { AUTHOR_NAME } from '../constants/METADATA'
-import { SITE_URL } from '../constants/SITE'
+import { LANGUAGES } from '../../language/constants/language'
+import { GITHUB_URL, LINKEDIN_URL, TWITTER_URL } from '../../shared/constants/social-media'
+import { AUTHOR_NAME } from '../constants/metadata'
+import { SITE_URL } from '../constants/site'
 
 export function buildArticleJsonLd(article: Article, language: LANGUAGES) {
   const url = `${SITE_URL}${getArticlePath(language, article.slug)}`

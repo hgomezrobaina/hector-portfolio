@@ -1,10 +1,10 @@
 // eslint-disable-next-line import/named
-import { LegacyAnimationControls, motion } from 'framer-motion';
-import NextImage from 'next/image';
-import { APP_IMAGES } from '../../../../modules/app/constants/APP_IMAGES';
+import { LegacyAnimationControls, motion } from 'framer-motion'
+import NextImage from 'next/image'
+import { APP_IMAGES } from '../../../../modules/app/constants/app-images'
 
 interface Props {
-  meImageAnimation: LegacyAnimationControls;
+  meImageAnimation: LegacyAnimationControls
 }
 
 export default function Image({ meImageAnimation }: Props) {
@@ -23,5 +23,5 @@ export default function Image({ meImageAnimation }: Props) {
         className="relative w-[350px] h-auto animate-float drop-shadow-2xl"
       />
     </motion.div>
-  );
+  )
 }

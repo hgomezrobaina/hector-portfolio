@@ -4,8 +4,8 @@ import { ARTICLES } from '../../../../../components/Articles/constants/articles'
 import { buildArticleMetadata } from '../../../../../components/Articles/utils/build-article-metadata'
 import { getArticleBySlug, loadArticleContent } from '../../../../../components/Articles/utils/get-article'
 import JsonLd from '../../../../../modules/app/components/JsonLd/JsonLd'
-import { buildArticleJsonLd } from '../../../../../modules/app/utils/buildArticleJsonLd'
-import { LANGUAGES } from '../../../../../modules/language/constants/LANGUAGES'
+import { buildArticleJsonLd } from '../../../../../modules/app/utils/build-article-json-ld'
+import { LANGUAGES } from '../../../../../modules/language/constants/language'
 
 interface Props {
   params: Promise<{ slug: string }>

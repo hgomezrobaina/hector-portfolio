@@ -1,8 +1,8 @@
-import { LANGUAGES } from '../../language/constants/LANGUAGES'
-import { GITHUB_URL, LINKEDIN_URL, TWITTER_URL, EMAIL } from '../../shared/constants/SOCIAL_MEDIA'
-import { APP_IMAGES } from '../constants/APP_IMAGES'
-import { AUTHOR_NAME } from '../constants/METADATA'
-import { SITE_URL } from '../constants/SITE'
+import { LANGUAGES } from '../../language/constants/language'
+import { GITHUB_URL, LINKEDIN_URL, TWITTER_URL, EMAIL } from '../../shared/constants/social-media'
+import { APP_IMAGES } from '../constants/app-images'
+import { AUTHOR_NAME } from '../constants/metadata'
+import { SITE_URL } from '../constants/site'
 
 const JOB_TITLE: Record<LANGUAGES, string> = {
   [LANGUAGES.EN]: 'Fullstack Developer',

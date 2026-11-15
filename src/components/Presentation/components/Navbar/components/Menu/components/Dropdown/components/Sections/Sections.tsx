@@ -1,4 +1,4 @@
-import { SECTIONS } from '../../../../../../../../../../modules/app/constants/SECTIONS'
+import { SECTIONS } from '../../../../../../../../../../modules/app/constants/sections'
 import useLanguage from '../../../../../../../../../../modules/language/hooks/useLanguage'
 
 interface Props {

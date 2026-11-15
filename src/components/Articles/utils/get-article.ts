@@ -1,4 +1,4 @@
-import { LANGUAGES } from '../../../modules/language/constants/LANGUAGES'
+import { LANGUAGES } from '../../../modules/language/constants/language'
 import { ARTICLES } from '../constants/articles'
 import { ArticleModule } from '../constants/article-content'
 import { Article } from '../domain/article'

@@ -1,4 +1,4 @@
-import { LANGUAGES } from '../constants/LANGUAGES'
+import { LANGUAGES } from '../constants/language'
 
 export type LanguageConfig<T = string> = { [language in LANGUAGES]: T }
 

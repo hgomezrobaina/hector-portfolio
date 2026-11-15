@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { clsx } from 'clsx'
 import ArrowRight from '../../../../modules/icon/components/ArrowRight'
 import Share from '../../../../modules/icon/components/Share'
-import { LANGUAGE_ROUTES } from '../../../../modules/language/constants/LANGUAGES'
+import { LANGUAGE_ROUTES } from '../../../../modules/language/constants/language'
 import useLanguage from '../../../../modules/language/hooks/useLanguage'
 import useTranslation from '../../../../modules/language/hooks/useTranslation'
 import { Article } from '../../../Articles/domain/article'
@@ -41,6 +41,7 @@ export default function ArticleFooter({ article }: Props) {
         <span className="rotate-180 stroke-current transition-transform duration-200 group-hover:-translate-x-1">
           <ArrowRight size={16} />
         </span>
+
         {BACK}
       </Link>
 

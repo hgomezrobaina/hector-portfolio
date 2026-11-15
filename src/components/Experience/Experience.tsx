@@ -1,6 +1,6 @@
 import SectionContainer from '../../modules/app/components/SectionContainer/SectionContainer'
 import SectionHeader from '../../modules/app/components/SectionHeader/SectionHeader'
-import { EXPERIENCE } from '../../modules/app/constants/SECTIONS'
+import { EXPERIENCE } from '../../modules/app/constants/sections'
 import useLanguage from '../../modules/language/hooks/useLanguage'
 import ExpCard from './components/ExpCard/ExpCard'
 import TimeLine from './components/TimeLine/TimeLine'

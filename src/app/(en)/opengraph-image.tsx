@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og'
-import { ogImageElement } from '../_og/ogImageElement'
+import { ogImageElement } from '../_og/og-image-element'
 
 export const dynamic = 'force-static'
 export const alt = 'Héctor Gómez | Fullstack Developer Portfolio'

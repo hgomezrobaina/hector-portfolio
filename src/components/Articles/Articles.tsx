@@ -1,6 +1,6 @@
 import SectionContainer from '../../modules/app/components/SectionContainer/SectionContainer'
 import SectionHeader from '../../modules/app/components/SectionHeader/SectionHeader'
-import { ARTICLES as ARTICLES_SECTION } from '../../modules/app/constants/SECTIONS'
+import { ARTICLES as ARTICLES_SECTION } from '../../modules/app/constants/sections'
 import useLanguage from '../../modules/language/hooks/useLanguage'
 import ArticleComp from './components/Article/Article'
 import { ARTICLES } from './constants/articles'

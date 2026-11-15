@@ -6,8 +6,8 @@ import {
   SITE_KEYWORDS,
   SITE_NAME,
   TWITTER_HANDLE,
-} from '../../modules/app/constants/METADATA'
-import { SITE_URL } from '../../modules/app/constants/SITE'
+} from '../../modules/app/constants/metadata'
+import { SITE_URL } from '../../modules/app/constants/site'
 import '../globals.css'
 
 const TITLE = 'Héctor Gómez | Portafolio'

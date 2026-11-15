@@ -1,6 +1,6 @@
 import SectionContainer from '../../modules/app/components/SectionContainer/SectionContainer'
 import SectionHeader from '../../modules/app/components/SectionHeader/SectionHeader'
-import { ABOUT } from '../../modules/app/constants/SECTIONS'
+import { ABOUT } from '../../modules/app/constants/sections'
 import useLanguage from '../../modules/language/hooks/useLanguage'
 import Image from './components/Image/Image'
 import Text from './components/Text/Text'

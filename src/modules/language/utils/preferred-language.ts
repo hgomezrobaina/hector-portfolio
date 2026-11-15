@@ -1,4 +1,4 @@
-import { LANGUAGES, LANGUAGE_STORAGE_KEY } from '../constants/LANGUAGES'
+import { LANGUAGES, LANGUAGE_STORAGE_KEY } from '../constants/language'
 
 export function savePreferredLanguage(language: LANGUAGES) {
   try {

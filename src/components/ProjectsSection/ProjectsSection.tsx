@@ -1,6 +1,6 @@
 import SectionContainer from '../../modules/app/components/SectionContainer/SectionContainer'
 import SectionHeader from '../../modules/app/components/SectionHeader/SectionHeader'
-import { PROYECTS } from '../../modules/app/constants/SECTIONS'
+import { PROYECTS } from '../../modules/app/constants/sections'
 import { motion } from 'framer-motion'
 import Card from './components/Card/Card'
 import { PROJECTS } from './constants/PROJECTS'

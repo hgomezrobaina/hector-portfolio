@@ -1,7 +1,7 @@
 import ArrowRight from '../../../../../../../../modules/icon/components/ArrowRight'
 import useTranslation from '../../../../../../../../modules/language/hooks/useTranslation'
 import ExternalLink from '../../../../../../../../modules/app/components/ExtrernalLink/ExternalLink'
-import { EMAIL_URL } from '../../../../../../../../modules/shared/constants/SOCIAL_MEDIA'
+import { EMAIL_URL } from '../../../../../../../../modules/shared/constants/social-media'
 import { clsx } from 'clsx'
 
 export default function ContactButton() {

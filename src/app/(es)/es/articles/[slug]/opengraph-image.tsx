@@ -1,8 +1,8 @@
 import { ImageResponse } from 'next/og'
 import { ARTICLES } from '../../../../../components/Articles/constants/articles'
 import { getArticleBySlug } from '../../../../../components/Articles/utils/get-article'
-import { LANGUAGES } from '../../../../../modules/language/constants/LANGUAGES'
-import { ogArticleImageElement } from '../../../../_og/ogArticleImageElement'
+import { LANGUAGES } from '../../../../../modules/language/constants/language'
+import { ogArticleImageElement } from '../../../../_og/og-article-image-element'
 
 export const dynamic = 'force-static'
 export const size = { width: 1200, height: 630 }

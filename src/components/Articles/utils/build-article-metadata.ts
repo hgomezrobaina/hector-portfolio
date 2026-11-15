@@ -5,9 +5,9 @@ import {
   SITE_KEYWORDS,
   SITE_NAME,
   TWITTER_HANDLE,
-} from '../../../modules/app/constants/METADATA'
-import { SITE_URL } from '../../../modules/app/constants/SITE'
-import { LANGUAGES } from '../../../modules/language/constants/LANGUAGES'
+} from '../../../modules/app/constants/metadata'
+import { SITE_URL } from '../../../modules/app/constants/site'
+import { LANGUAGES } from '../../../modules/language/constants/language'
 import { getArticleBySlug, getArticlePath } from './get-article'
 
 const OG_LOCALES: Record<LANGUAGES, string> = {

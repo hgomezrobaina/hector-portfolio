@@ -1,5 +1,5 @@
-import { APP_IMAGES } from '../../../../../../../../../../../../modules/app/constants/APP_IMAGES'
-import { LANGUAGES } from '../../../../../../../../../../../../modules/language/constants/LANGUAGES'
+import { APP_IMAGES } from '../../../../../../../../../../../../modules/app/constants/app-images'
+import { LANGUAGES } from '../../../../../../../../../../../../modules/language/constants/language'
 import Button from './components/Button/Button'
 
 export default function Language() {

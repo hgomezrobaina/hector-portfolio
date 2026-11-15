@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
 import ExternalLink from '../../../../../../modules/app/components/ExtrernalLink/ExternalLink'
-import { SOCIAL_MEDIA } from '../../../../../../modules/shared/constants/SOCIAL_MEDIA'
+import { SOCIAL_MEDIA } from '../../../../../../modules/shared/constants/social-media'
 
 export default function Links() {
   const BUTTON_CLASS = clsx(

@@ -1,4 +1,4 @@
-import { APP_IMAGES } from '../../../modules/app/constants/APP_IMAGES'
+import { APP_IMAGES } from '../../../modules/app/constants/app-images'
 import Backend from '../../../modules/icon/components/Backend'
 import CodeLanguages from '../../../modules/icon/components/CodeLanguages'
 import Frontend from '../../../modules/icon/components/Frontend'

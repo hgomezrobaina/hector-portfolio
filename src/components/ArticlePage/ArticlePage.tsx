@@ -1,4 +1,4 @@
-import { LANGUAGES } from '../../modules/language/constants/LANGUAGES'
+import { LANGUAGES } from '../../modules/language/constants/language'
 import { LanguageProvider } from '../../modules/language/context/LanguageContext'
 import { ThemeProvider } from '../../modules/theme/context/ThemeContext'
 import { Article } from '../Articles/domain/article'

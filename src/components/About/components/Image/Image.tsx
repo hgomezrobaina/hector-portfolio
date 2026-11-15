@@ -1,5 +1,5 @@
 import NextImage from 'next/image'
-import { APP_IMAGES } from '../../../../modules/app/constants/APP_IMAGES'
+import { APP_IMAGES } from '../../../../modules/app/constants/app-images'
 
 export default function Image() {
   return (

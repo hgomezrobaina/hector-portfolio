@@ -1,8 +1,8 @@
 import type { MetadataRoute } from 'next'
 import { ARTICLES } from '../components/Articles/constants/articles'
 import { getArticlePath } from '../components/Articles/utils/get-article'
-import { SITE_URL } from '../modules/app/constants/SITE'
-import { LANGUAGES } from '../modules/language/constants/LANGUAGES'
+import { SITE_URL } from '../modules/app/constants/site'
+import { LANGUAGES } from '../modules/language/constants/language'
 
 export const dynamic = 'force-static'
 

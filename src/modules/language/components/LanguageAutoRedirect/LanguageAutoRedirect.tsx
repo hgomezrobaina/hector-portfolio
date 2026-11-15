@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { LANGUAGES, LANGUAGE_ROUTES } from '../../constants/LANGUAGES'
-import { hasPreferredLanguage } from '../../utils/preferredLanguage'
+import { LANGUAGES, LANGUAGE_ROUTES } from '../../constants/language'
+import { hasPreferredLanguage } from '../../utils/preferred-language'
 
 export default function LanguageAutoRedirect() {
   const router = useRouter()

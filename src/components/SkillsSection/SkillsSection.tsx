@@ -2,7 +2,7 @@ import SectionContainer from '../../modules/app/components/SectionContainer/Sect
 import SectionHeader from '../../modules/app/components/SectionHeader/SectionHeader'
 import SkillCard from './components/SkillCard/SkillCard'
 import { SKILLS } from './constants/SKILLS'
-import { SKILLS as SKILLS_SECTION } from '../../modules/app/constants/SECTIONS'
+import { SKILLS as SKILLS_SECTION } from '../../modules/app/constants/sections'
 import useLanguage from '../../modules/language/hooks/useLanguage'
 
 export default function SkillsSection() {
