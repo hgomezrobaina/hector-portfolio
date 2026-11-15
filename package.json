@@ -7,7 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit && eslint src/**/*.ts{,x} --cache --max-warnings=0",
-    "lint:fix": "eslint src/**/*.ts{,x} --fix"
+    "lint:fix": "eslint src/**/*.ts{,x} --fix",
+    "cv": "npm run cv:validate && npm run cv:build && npm run cv:audit",
+    "cv:setup": "puppeteer browsers install chrome",
+    "cv:validate": "resumed validate cv/resume.es.json && resumed validate cv/resume.en.json",
+    "cv:html": "node cv/scripts/build.mjs --html",
+    "cv:build": "node cv/scripts/build.mjs",
+    "cv:audit": "node cv/scripts/audit.mjs"
   },
   "dependencies": {
     "@mdx-js/loader": "^3.1.1",
@@ -41,6 +47,8 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "postcss": "^8.5.26",
     "prettier": "^3.9.6",
+    "puppeteer": "^25.16.0",
+    "resumed": "^7.1.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3"
   }

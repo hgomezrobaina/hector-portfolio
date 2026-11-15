@@ -1,0 +1,131 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jsonresume/resume-schema/v1.0.0/schema.json",
+  "basics": {
+    "name": "Héctor Angel Gómez Robaina",
+    "label": "Ingeniero Informático · Desarrollador Fullstack",
+    "email": "hectorangel2001@gmail.com",
+    "phone": "+34 625532959",
+    "url": "https://hector-gomez.com",
+    "summary": "Ingeniero Informático especializado en el desarrollo de aplicaciones fullstack y en la integración de modelos de lenguaje en producto, con experiencia construyendo plataformas de gestión, administración y análisis de datos con NestJS, React y PostgreSQL. He llevado la IA a producto sobre la API de Anthropic: generación asistida con salidas estructuradas por JSON Schema, caché de prompt, streaming de progreso y medición de consumo por llamada, siempre aislada tras puertos de dominio para poder cambiar de proveedor sin tocar la lógica de negocio. Sólidos conocimientos en arquitectura hexagonal, DDD, diseño de APIs y testing end-to-end. Me caracterizo por mi capacidad de aprendizaje continuo, trabajo en equipo y enfoque en soluciones escalables, mantenibles y eficientes.",
+    "location": {
+      "city": "Madrid",
+      "region": "España",
+      "countryCode": "ES"
+    },
+    "profiles": [
+      {
+        "network": "LinkedIn",
+        "username": "hector-gomez",
+        "url": "https://linkedin.com/in/hector-gomez"
+      },
+      {
+        "network": "GitHub",
+        "username": "hgomezrobaina",
+        "url": "https://github.com/hgomezrobaina"
+      }
+    ]
+  },
+  "work": [
+    {
+      "name": "ETECSA",
+      "position": "Desarrollador Senior",
+      "location": "La Habana, Cuba",
+      "startDate": "2025-10",
+      "endDate": "2026-10",
+      "highlights": [
+        "Diseñé y desarrollé servicios backend utilizando NestJS y PostgreSQL para plataformas internas de análisis y gestión de datos.",
+        "Modelé y optimicé estructuras de bases de datos, mejorando el rendimiento de consultas y la integridad de la información.",
+        "Implementé APIs REST seguras para la gestión de usuarios, reportes y datos estadísticos utilizados por diferentes áreas de la organización.",
+        "Implementé prácticas de CI/CD para mejorar la eficiencia en la entrega de software, reduciendo errores y bajando los tiempos de despliegue más de un 80%.",
+        "Lideré la mejora del rendimiento web de productos administrativos de la empresa, mentorizando con mejores prácticas, creando dashboards y diseñando estrategias.",
+        "Introduje el uso de asistentes de IA en el ciclo de desarrollo (especificación → diseño → tareas → implementación verificada), estandarizando el flujo en guías propias del repositorio y reduciendo el tiempo de arranque de cada nueva funcionalidad."
+      ]
+    },
+    {
+      "name": "Freelancer",
+      "position": "Desarrollador FullStack",
+      "location": "La Habana, Cuba",
+      "startDate": "2022-04",
+      "endDate": "2025-10",
+      "highlights": [
+        "Diseñé e implementé en Chaca la generación de datasets con IA a partir de descripciones en lenguaje natural, en tres etapas —planificación, diseño de cada schema en paralelo y ensamblado de ids y relaciones— sobre el SDK de Anthropic, con salidas estructuradas forzadas por JSON Schema para que la respuesta del modelo siempre sea válida y legible por la aplicación.",
+        "Optimicé coste y latencia de la generación con caché de prompt sobre el contexto estable, selección de modelo según la complejidad de la tarea y un reparto del trabajo en una llamada por schema con concurrencia limitada, evitando respuestas truncadas y errores de rate limit.",
+        "Implementé el seguimiento en vivo de la generación con Server-Sent Events (etapas, progreso y heartbeat frente a cortes de proxy) y la contabilidad de consumo por llamada —tokens de entrada, salida, escritura y lectura de caché por separado—, expuesta en un panel de backoffice con el coste real por usuario y por turno.",
+        "Desarrollé en Dealernode un asistente de IA que construye flujos de trabajo conversando con el operador, con el proveedor aislado tras un puerto de dominio y tres implementaciones intercambiables (Claude, OpenAI y una falsa para pruebas end-to-end deterministas), conversaciones persistidas y contexto generado a partir del modelo de negocio.",
+        "Audité y rediseñé esa capa de comunicación con la IA: contrato de respuesta impuesto en vez de solicitado, operaciones de parche sobre el grafo en lugar de reenviarlo entero, taxonomía de errores del proveedor con código propio, llamadas fuera de transacción y eliminación de datos personales y de otros clientes del contexto enviado al tercero.",
+        "Desarrollé una plataforma unificada de componentes y herramientas para los distintos productos de la empresa, convergiendo técnicamente y acelerando la entrega de producto en Dealernode y Visa4Cuba.",
+        "Desplegué aplicaciones web en servidores Linux y plataformas cloud, configurando servicios en AWS y automatizando procesos de despliegue.",
+        "Realicé mantenimiento y evolución de sistemas existentes, corrigiendo errores y mejorando el rendimiento de las aplicaciones.",
+        "Implementé interfaces web a partir de diseños en Figma, con Angular y React, y cubrí los flujos críticos con pruebas end-to-end en Cypress."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Chaca",
+      "description": "Librería open source de generación de datos",
+      "url": "https://github.com/hgomezrobaina/chaca",
+      "highlights": [
+        "Librería isomórfica (Node.js y navegador, ESM y CommonJS) para generar datos falsos relacionales a partir de un schema declarativo, con exportación a json, csv, yaml, postgresql, mysql, sqlite, java, python y typescript, CLI incluida y tipos de TypeScript.",
+        "Plataforma web (NestJS + React) alrededor de la librería con generación asistida por IA, adjuntos de esquema (prisma, graphql, sql, csv, json) como punto de partida del diseño y backoffice de administración.",
+        "Arquitectura hexagonal con el dominio libre de proveedor y cobertura de pruebas sobre todo el recorrido de la generación (plan, validación, normalización, ensamblado y reporte)."
+      ],
+      "keywords": ["TypeScript", "NestJS", "React", "Anthropic", "npm"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Universidad Tecnológica de La Habana “José Antonio Echeverría” (CUJAE)",
+      "area": "Ingeniería de Informática",
+      "studyType": "",
+      "location": "La Habana, Cuba",
+      "startDate": "2021-09",
+      "endDate": "2025-07"
+    }
+  ],
+  "skills": [
+    {
+      "name": "Lenguajes de programación",
+      "keywords": ["Python", "TypeScript", "Go"]
+    },
+    {
+      "name": "Tecnologías frontend",
+      "keywords": ["React", "Next.js", "Vue.js", "Angular"]
+    },
+    {
+      "name": "Tecnologías backend",
+      "keywords": ["NestJS", "Django", "GraphQL"]
+    },
+    {
+      "name": "IA aplicada",
+      "keywords": [
+        "API de Anthropic (Claude)",
+        "OpenAI",
+        "salidas estructuradas con JSON Schema",
+        "caché de prompt",
+        "streaming SSE",
+        "diseño de contexto",
+        "medición de consumo y coste",
+        "proveedores falsos para pruebas deterministas"
+      ]
+    },
+    {
+      "name": "Bases de datos",
+      "keywords": ["PostgreSQL", "MongoDB"]
+    },
+    {
+      "name": "Arquitectura y prácticas",
+      "keywords": [
+        "Arquitectura hexagonal",
+        "DDD",
+        "testing end-to-end (Cypress)",
+        "CI/CD",
+        "AWS"
+      ]
+    }
+  ],
+  "languages": [
+    { "language": "Español", "fluency": "Nativo" },
+    { "language": "Inglés", "fluency": "Fluido" }
+  ]
+}

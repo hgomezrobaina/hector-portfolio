@@ -29,3 +29,6 @@ next-env.d.ts
 *.njsproj
 *.sln
 *.sw?
+
+# CV: HTML y texto intermedios de la generación (los PDF de public/cvs sí se versionan)
+cv/.out
