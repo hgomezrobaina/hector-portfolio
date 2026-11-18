@@ -6,7 +6,7 @@
     "email": "hectorangel2001@gmail.com",
     "phone": "+34 625532959",
     "url": "https://hector-gomez.com",
-    "summary": "Ingeniero Informático especializado en el desarrollo de aplicaciones fullstack y en la integración de modelos de lenguaje en producto, con experiencia construyendo plataformas de gestión, administración y análisis de datos con NestJS, React y PostgreSQL. He llevado la IA a producto sobre la API de Anthropic: generación asistida con salidas estructuradas por JSON Schema, caché de prompt, streaming de progreso y medición de consumo por llamada, siempre aislada tras puertos de dominio para poder cambiar de proveedor sin tocar la lógica de negocio. Sólidos conocimientos en arquitectura hexagonal, DDD, diseño de APIs y testing end-to-end. Me caracterizo por mi capacidad de aprendizaje continuo, trabajo en equipo y enfoque en soluciones escalables, mantenibles y eficientes.",
+    "summary": "Ingeniero Informático centrado en llevar modelos de lenguaje a producción: salidas estructuradas por JSON Schema, caché de prompt y medición de consumo por llamada, siempre tras puertos de dominio para cambiar de proveedor sin tocar la lógica de negocio. Cuatro años construyendo plataformas de gestión y análisis de datos con NestJS, React y PostgreSQL sobre arquitectura hexagonal, DDD y testing end-to-end.",
     "location": {
       "city": "Madrid",
       "region": "España",
@@ -15,8 +15,8 @@
     "profiles": [
       {
         "network": "LinkedIn",
-        "username": "hector-gomez",
-        "url": "https://linkedin.com/in/hector-gomez"
+        "username": "hector-gomez-robaina",
+        "url": "https://www.linkedin.com/in/hector-gomez-robaina"
       },
       {
         "network": "GitHub",
@@ -34,15 +34,15 @@
       "endDate": "2026-10",
       "highlights": [
         "Diseñé y desarrollé servicios backend utilizando NestJS y PostgreSQL para plataformas internas de análisis y gestión de datos.",
-        "Modelé y optimicé estructuras de bases de datos, mejorando el rendimiento de consultas y la integridad de la información.",
         "Implementé APIs REST seguras para la gestión de usuarios, reportes y datos estadísticos utilizados por diferentes áreas de la organización.",
         "Implementé prácticas de CI/CD para mejorar la eficiencia en la entrega de software, reduciendo errores y bajando los tiempos de despliegue más de un 80%.",
         "Lideré la mejora del rendimiento web de productos administrativos de la empresa, mentorizando con mejores prácticas, creando dashboards y diseñando estrategias.",
         "Introduje el uso de asistentes de IA en el ciclo de desarrollo (especificación → diseño → tareas → implementación verificada), estandarizando el flujo en guías propias del repositorio y reduciendo el tiempo de arranque de cada nueva funcionalidad."
-      ]
+      ],
+      "summary": "Operador nacional de telecomunicaciones de Cuba."
     },
     {
-      "name": "Freelancer",
+      "name": "Freelance — Dealernode y Visa4Cuba",
       "position": "Desarrollador FullStack",
       "location": "La Habana, Cuba",
       "startDate": "2022-04",
@@ -53,10 +53,7 @@
         "Implementé el seguimiento en vivo de la generación con Server-Sent Events (etapas, progreso y heartbeat frente a cortes de proxy) y la contabilidad de consumo por llamada —tokens de entrada, salida, escritura y lectura de caché por separado—, expuesta en un panel de backoffice con el coste real por usuario y por turno.",
         "Desarrollé en Dealernode un asistente de IA que construye flujos de trabajo conversando con el operador, con el proveedor aislado tras un puerto de dominio y tres implementaciones intercambiables (Claude, OpenAI y una falsa para pruebas end-to-end deterministas), conversaciones persistidas y contexto generado a partir del modelo de negocio.",
         "Audité y rediseñé esa capa de comunicación con la IA: contrato de respuesta impuesto en vez de solicitado, operaciones de parche sobre el grafo en lugar de reenviarlo entero, taxonomía de errores del proveedor con código propio, llamadas fuera de transacción y eliminación de datos personales y de otros clientes del contexto enviado al tercero.",
-        "Desarrollé una plataforma unificada de componentes y herramientas para los distintos productos de la empresa, convergiendo técnicamente y acelerando la entrega de producto en Dealernode y Visa4Cuba.",
-        "Desplegué aplicaciones web en servidores Linux y plataformas cloud, configurando servicios en AWS y automatizando procesos de despliegue.",
-        "Realicé mantenimiento y evolución de sistemas existentes, corrigiendo errores y mejorando el rendimiento de las aplicaciones.",
-        "Implementé interfaces web a partir de diseños en Figma, con Angular y React, y cubrí los flujos críticos con pruebas end-to-end en Cypress."
+        "Desarrollé una plataforma unificada de componentes y herramientas para los distintos productos de la empresa, convergiendo técnicamente y acelerando la entrega de producto en Dealernode y Visa4Cuba."
       ]
     }
   ],
@@ -66,18 +63,26 @@
       "description": "Librería open source de generación de datos",
       "url": "https://github.com/hgomezrobaina/chaca",
       "highlights": [
-        "Librería isomórfica (Node.js y navegador, ESM y CommonJS) para generar datos falsos relacionales a partir de un schema declarativo, con exportación a json, csv, yaml, postgresql, mysql, sqlite, java, python y typescript, CLI incluida y tipos de TypeScript.",
+        "Librería isomorfa (Node.js y navegador, ESM y CommonJS) publicada en npm —v2.4.0, más de 3.000 descargas en el último año— que genera datos falsos relacionales desde un schema declarativo y exporta a json, csv, yaml, postgresql, mysql, sqlite, java, python y typescript, con CLI y tipos de TypeScript incluidos.",
         "Plataforma web (NestJS + React) alrededor de la librería con generación asistida por IA, adjuntos de esquema (prisma, graphql, sql, csv, json) como punto de partida del diseño y backoffice de administración.",
         "Arquitectura hexagonal con el dominio libre de proveedor y cobertura de pruebas sobre todo el recorrido de la generación (plan, validación, normalización, ensamblado y reporte)."
       ],
-      "keywords": ["TypeScript", "NestJS", "React", "Anthropic", "npm"]
+      "keywords": ["TypeScript", "NestJS", "React", "Anthropic", "npm"],
+      "startDate": "2022-10"
     }
   ],
   "education": [
     {
+      "institution": "Universidad Complutense de Madrid (UCM)",
+      "studyType": "Máster en Cloud Computing e IA (en curso)",
+      "area": "",
+      "location": "Madrid, España",
+      "startDate": "2026-10"
+    },
+    {
       "institution": "Universidad Tecnológica de La Habana “José Antonio Echeverría” (CUJAE)",
-      "area": "Ingeniería de Informática",
-      "studyType": "",
+      "area": "",
+      "studyType": "Ingeniero Informático",
       "location": "La Habana, Cuba",
       "startDate": "2021-09",
       "endDate": "2025-07"
@@ -115,17 +120,17 @@
     },
     {
       "name": "Arquitectura y prácticas",
-      "keywords": [
-        "Arquitectura hexagonal",
-        "DDD",
-        "testing end-to-end (Cypress)",
-        "CI/CD",
-        "AWS"
-      ]
+      "keywords": ["Arquitectura hexagonal", "DDD", "testing end-to-end (Cypress)", "CI/CD", "AWS"]
     }
   ],
   "languages": [
-    { "language": "Español", "fluency": "Nativo" },
-    { "language": "Inglés", "fluency": "Fluido" }
+    {
+      "language": "Español",
+      "fluency": "Nativo"
+    },
+    {
+      "language": "Inglés",
+      "fluency": "B2"
+    }
   ]
 }

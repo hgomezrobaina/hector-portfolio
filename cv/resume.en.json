@@ -6,7 +6,7 @@
     "email": "hectorangel2001@gmail.com",
     "phone": "+34 625532959",
     "url": "https://hector-gomez.com",
-    "summary": "Computer Engineer specialised in fullstack development and in taking large language models to production, with experience building management, administration and data analysis platforms with NestJS, React and PostgreSQL. I have shipped AI features on top of the Anthropic API: assisted generation with structured outputs enforced by JSON Schema, prompt caching, streamed progress and per-call usage accounting, always isolated behind domain ports so the provider can be swapped without touching business logic. Solid background in hexagonal architecture, DDD, API design and end-to-end testing. Continuous learner, team player, focused on scalable, maintainable and efficient solutions.",
+    "summary": "Computer Engineer focused on taking large language models to production: structured outputs enforced by JSON Schema, prompt caching and per-call usage accounting, always behind domain ports so the provider can be swapped without touching business logic. Four years building management and data analysis platforms with NestJS, React and PostgreSQL on hexagonal architecture, DDD and end-to-end testing.",
     "location": {
       "city": "Madrid",
       "region": "Spain",
@@ -15,8 +15,8 @@
     "profiles": [
       {
         "network": "LinkedIn",
-        "username": "hector-gomez",
-        "url": "https://linkedin.com/in/hector-gomez"
+        "username": "hector-gomez-robaina",
+        "url": "https://www.linkedin.com/in/hector-gomez-robaina"
       },
       {
         "network": "GitHub",
@@ -34,15 +34,15 @@
       "endDate": "2026-10",
       "highlights": [
         "Designed and built backend services with NestJS and PostgreSQL for internal data analysis and management platforms.",
-        "Modelled and optimised database structures, improving query performance and data integrity.",
         "Implemented secure REST APIs for user management, reporting and statistical data used across the organisation.",
         "Implemented CI/CD practices to improve software delivery efficiency, reducing errors and cutting deployment times by more than 80%.",
         "Led the web performance improvement of the company's administrative products, mentoring on best practices, building dashboards and designing strategies.",
         "Introduced AI assistants into the development cycle (specification → design → tasks → verified implementation), standardising the flow in repository guides and shortening the ramp-up time of each new feature."
-      ]
+      ],
+      "summary": "Cuba's national telecom operator."
     },
     {
-      "name": "Freelancer",
+      "name": "Freelance — Dealernode and Visa4Cuba",
       "position": "FullStack Developer",
       "location": "Havana, Cuba",
       "startDate": "2022-04",
@@ -53,10 +53,7 @@
         "Built live generation tracking with Server-Sent Events (stages, progress and heartbeat against proxy timeouts) and per-call usage accounting —input, output, cache write and cache read tokens kept apart—, surfaced in a backoffice panel with the real cost per user and per turn.",
         "Developed an AI assistant in Dealernode that builds workflows by conversing with the operator, with the provider isolated behind a domain port and three interchangeable implementations (Claude, OpenAI and a fake one for deterministic end-to-end tests), persisted conversations and context derived from the business model.",
         "Audited and redesigned that AI communication layer: a response contract enforced rather than requested, patch operations on the graph instead of resending it whole, a provider error taxonomy with its own codes, calls moved outside transactions, and removal of personal and cross-tenant data from the context sent to the third party.",
-        "Built a unified component and tooling platform for the company's products, converging technically and speeding up product delivery for Dealernode and Visa4Cuba.",
-        "Deployed web applications on Linux servers and cloud platforms, configuring AWS services and automating deployment processes.",
-        "Maintained and evolved existing systems, fixing bugs and improving application performance.",
-        "Implemented web interfaces from Figma designs with Angular and React, covering critical flows with end-to-end tests in Cypress."
+        "Built a unified component and tooling platform for the company's products, converging technically and speeding up product delivery for Dealernode and Visa4Cuba."
       ]
     }
   ],
@@ -66,18 +63,26 @@
       "description": "Open source data generation library",
       "url": "https://github.com/hgomezrobaina/chaca",
       "highlights": [
-        "Isomorphic library (Node.js and browser, ESM and CommonJS) that generates relational fake data from a declarative schema, exporting to json, csv, yaml, postgresql, mysql, sqlite, java, python and typescript, with a CLI and TypeScript types included.",
+        "Isomorphic library (Node.js and browser, ESM and CommonJS) published on npm —v2.4.0, over 3,000 downloads in the last year— that generates relational fake data from a declarative schema and exports to json, csv, yaml, postgresql, mysql, sqlite, java, python and typescript, with a CLI and TypeScript types included.",
         "Web platform (NestJS + React) around the library with AI-assisted generation, schema attachments (prisma, graphql, sql, csv, json) as the starting point of the design, and an administration backoffice.",
         "Hexagonal architecture with a provider-free domain and test coverage over the whole generation path (plan, validation, normalisation, assembly and report)."
       ],
-      "keywords": ["TypeScript", "NestJS", "React", "Anthropic", "npm"]
+      "keywords": ["TypeScript", "NestJS", "React", "Anthropic", "npm"],
+      "startDate": "2022-10"
     }
   ],
   "education": [
     {
+      "institution": "Complutense University of Madrid (UCM)",
+      "studyType": "Master's in Cloud Computing and AI (in progress)",
+      "area": "",
+      "location": "Madrid, Spain",
+      "startDate": "2026-10"
+    },
+    {
       "institution": "Technological University of Havana “José Antonio Echeverría” (CUJAE)",
       "area": "Computer Engineering",
-      "studyType": "",
+      "studyType": "Engineer's degree",
       "location": "Havana, Cuba",
       "startDate": "2021-09",
       "endDate": "2025-07"
@@ -115,17 +120,17 @@
     },
     {
       "name": "Architecture and practices",
-      "keywords": [
-        "Hexagonal architecture",
-        "DDD",
-        "end-to-end testing (Cypress)",
-        "CI/CD",
-        "AWS"
-      ]
+      "keywords": ["Hexagonal architecture", "DDD", "end-to-end testing (Cypress)", "CI/CD", "AWS"]
     }
   ],
   "languages": [
-    { "language": "Spanish", "fluency": "Native" },
-    { "language": "English", "fluency": "Fluent" }
+    {
+      "language": "Spanish",
+      "fluency": "Native"
+    },
+    {
+      "language": "English",
+      "fluency": "B2 (CEFR)"
+    }
   ]
 }
